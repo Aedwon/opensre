@@ -6,13 +6,10 @@ from typing import Any
 from core.agent_harness.prompts.rules import (
     AGENT_RESPONSE_THREE_TIER_RULE,
     CLI_ASSISTANT_MARKDOWN_RULE,
-    GATEWAY_MESSAGE_LAYOUT_RULE,
-    GATEWAY_RESPONSE_SHAPE_RULE,
-    GATEWAY_SETUP_GUIDANCE_RULE,
-    GATEWAY_TEAMMATE_PERSONA_RULE,
     INTERACTIVE_SHELL_TERMINOLOGY_RULE,
 )
 from core.agent_harness.prompts.runtime_facts import render_runtime_facts
+from platform.harness_ports import assistant_prompt_vendor_fragments, gateway_persona_fragments
 
 _TERMINOLOGY_RULE = INTERACTIVE_SHELL_TERMINOLOGY_RULE
 _MARKDOWN_RULE = CLI_ASSISTANT_MARKDOWN_RULE
@@ -48,22 +45,6 @@ _SETUP_GUIDANCE_RULE = (
     "assistant runs. If you still receive the turn, explain the exact slash command "
     "briefly: `/integrations setup <service>` for integrations, or `/mcp connect "
     "<server>` for MCP servers. Do not emit JSON or claim you changed runtime state."
-)
-
-_SENTRY_SUMMARY_RULE = (
-    "Sentry summary: open **I found:** with digest.scope_summary verbatim, then "
-    "add digest.scope_note on the next line when page_saturated is true or when "
-    "clarifying completeness matters. When digest.completeness is empty, say the "
-    "requested window had no unresolved groups — do not summarize issues from a "
-    "different window or imply activity outside that period. Use "
-    "digest.structural_clusters for themed buckets — format each as "
-    "`N issues (P%)` using issue_count and percent (percent_basis is "
-    "returned_page). Include sample_short_ids when present. Never show a bare "
-    "project slug without explaining samples. Priority table: rank clusters from "
-    "priority_candidates and business_impact_score / impact_reasons; include "
-    "Sample IDs column. Penalize high-count zero-user retry noise. Do not ask to "
-    "narrow or repeat search; offer a separately labeled broader window only if "
-    "the user asks."
 )
 
 _HANDOFF_GUIDANCE: dict[str, str] = {
@@ -166,11 +147,11 @@ _CLI_PREAMBLE = (
 
 _GATEWAY_PREAMBLE = (
     "You are OpenSRE, an AI production engineer teammate helping a colleague in "
-    "Slack. You answer questions and help with SRE/observability and general "
-    "production-engineering work directly in the conversation. You do NOT run the "
-    "incident investigation pipeline yourself (that is separate), but you are "
-    "grounded on its architecture below and can answer questions about its stages "
-    "and source files.\n"
+    "a team chat channel. You answer questions and help with SRE/observability "
+    "and general production-engineering work directly in the conversation. You "
+    "do NOT run the incident investigation pipeline yourself (that is separate), "
+    "but you are grounded on its architecture below and can answer questions "
+    "about its stages and source files.\n"
     "When someone wants a full investigation of an alert, ask them to paste the "
     "alert text, JSON, or a concrete incident description (errors, services, "
     "symptoms).\n"
@@ -191,10 +172,16 @@ def _build_system_prompt(
     """Build the system prompt for one assistant turn."""
     is_gateway = surface == "gateway"
     preamble = _GATEWAY_PREAMBLE if is_gateway else _CLI_PREAMBLE
-    terminology_rule = GATEWAY_TEAMMATE_PERSONA_RULE if is_gateway else _TERMINOLOGY_RULE
-    setup_rule = GATEWAY_SETUP_GUIDANCE_RULE if is_gateway else _SETUP_GUIDANCE_RULE
-    response_shape_rule = GATEWAY_RESPONSE_SHAPE_RULE if is_gateway else _RESPONSE_SHAPE_RULE
-    layout_block = f"{GATEWAY_MESSAGE_LAYOUT_RULE}\n\n" if is_gateway else ""
+    # Gateway (Slack) persona wording is vendor-owned and reached only through
+    # the port — see integrations.slack.gateway_persona. The CLI equivalents
+    # (terminology/setup/response-shape rules) stay empty for gateway turns
+    # and are replaced wholesale by the joined gateway persona block below.
+    gateway_persona_block = f"{gateway_persona_fragments()}\n\n" if is_gateway else ""
+    # Separators live inside each block so an empty gateway slot contributes
+    # nothing rather than a run of blank lines.
+    terminology_block = "" if is_gateway else f"{_TERMINOLOGY_RULE}\n"
+    setup_block = "" if is_gateway else f"{_SETUP_GUIDANCE_RULE}\n\n"
+    response_shape_block = "" if is_gateway else f"{_RESPONSE_SHAPE_RULE}\n\n"
     repo_map_block = f"--- Repo map (AGENTS.md) ---\n{agents_md}\n\n" if agents_md else ""
     docs_block = (
         "--- Documentation reference (docs/) ---\n"
@@ -224,6 +211,8 @@ def _build_system_prompt(
         if prior_action_facts
         else ""
     )
+    vendor_fragments_text = assistant_prompt_vendor_fragments()
+    vendor_fragments = f"{vendor_fragments_text}\n\n" if vendor_fragments_text else ""
     return (
         f"{preamble}"
         "Exception: if Recent CLI conversation ends with **Want me to:** and "
@@ -238,22 +227,22 @@ def _build_system_prompt(
         "definition is unavailable.\n"
         "For vague operational questions (for example why a database is slow) "
         "with no pasted alert, restate the user's question in your reply and "
-        "ask for the target system, service, or alert context. Do NOT apply this "
-        "when the user already named a Slack #channel / channel_id, or when a "
-        "[Slack channel_id=…] context line is present — answer from Slack tools "
-        "or say what blocked the Slack read, without asking to run "
-        "`/integrations setup`.\n\n"
+        "ask for the target system, service, or alert context. A vendor "
+        "fragment may define its own exception to this default when a "
+        "channel/context marker is already present (see the vendor's "
+        "assistant-prompt fragment, e.g. Slack) — do not apply the ask-for-"
+        "context default in that case.\n\n"
         "The Recent CLI conversation may include outputs from earlier action tools "
         "(shell stdout, computed values, and sent-message inputs/results). Treat "
         "those as available thread context for follow-up questions; do not ask the "
         "user to paste values that are already present there.\n\n"
         f"{_PRIOR_INVESTIGATION_FOLLOW_UP_RULE}\n\n"
-        f"{setup_rule}\n\n"
+        f"{setup_block}"
         f"{_SOURCE_SCOPED_INVESTIGATION_RULE}\n\n"
-        f"{_SENTRY_SUMMARY_RULE}\n\n"
-        f"{response_shape_rule}\n\n"
-        f"{layout_block}"
-        f"{terminology_rule}\n{_MARKDOWN_RULE}\n\n"
+        f"{vendor_fragments}"
+        f"{response_shape_block}"
+        f"{gateway_persona_block}"
+        f"{terminology_block}{_MARKDOWN_RULE}\n\n"
         f"{environment}"
         f"--- CLI reference ---\n{reference}\n\n"
         f"{docs_block}"
