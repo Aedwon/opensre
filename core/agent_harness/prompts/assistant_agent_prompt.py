@@ -34,8 +34,9 @@ _PRIOR_INVESTIGATION_FOLLOW_UP_RULE = (
     "section below) and the user asks a retrospective question — such as "
     "'what happened?', 'what was the root cause?', 'summarize what you found', "
     "or similar — answer directly from that prior investigation data. Do NOT "
-    "ask for more alert context or redirect to `opensre investigate` when prior "
-    "investigation results are already available."
+    "ask for more alert context, claim you lack incident details, or redirect "
+    "to `opensre investigate` when prior investigation results are already "
+    "available. Lead with the prior root cause / findings."
 )
 
 _SETUP_GUIDANCE_RULE = (
@@ -57,6 +58,14 @@ _HANDOFF_GUIDANCE: dict[str, str] = {
         "active provider.\n"
         "- Do NOT suggest `/integrations setup llama`, `/remote`, or claim you "
         "switched providers.\n\n"
+    ),
+    "follow_up:prior_investigation": (
+        "The action planner handed off a retrospective question about the "
+        "investigation already completed in this session. Answer it from the "
+        "'--- Prior investigation in this session ---' section: lead with the "
+        "root cause and the findings it records. Do NOT ask which incident they "
+        "mean, do NOT ask for alert context, and do NOT suggest starting a new "
+        "investigation.\n\n"
     ),
 }
 
