@@ -98,7 +98,6 @@ Quick reference:
 
 | Path | Commands |
 | ---- | -------- |
-| EC2 (Docker/ECR — web + gateway) | `make build-image` → `make deploy` / `make destroy` |
 | Gateway (AMI + systemd — gateway only) | `make build-gateway-image` → `make deploy-gateway` / `make destroy-gateway` |
 | Hosted (Railway / ECS / Vercel) | Deploy with repo `Dockerfile`; set `LLM_PROVIDER` + API key |
 
