@@ -8,6 +8,9 @@ For our security posture, architecture overview, compliance information, and sub
 
 https://trust.tracer.cloud/
 
+Product communications. 
+By creating an account or installing OpenSRE, you agree that we may occasionally contact you (e.g., via email, GitHub, or Discord) about your use of the product, to ask for feedback, or to inform you of relevant updates. These messages are infrequent and you can opt out at any time by replying or emailing hello@opensre.com.
+
 ## Reporting a Vulnerability
 
 If you believe you’ve found a security vulnerability in Tracer, please report it privately.
