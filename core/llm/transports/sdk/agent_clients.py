@@ -37,7 +37,7 @@ from core.llm.shared.openai_responses import (
     uses_responses_api,
 )
 from core.llm.shared.tool_schema_normalize import build_openai_tool_specs
-from core.llm.shared.usage import emit_provider_usage
+from core.llm.shared.usage import emit_provider_usage, extract_cache_tokens
 from core.llm.types import AgentLLMResponse, ToolCall
 
 logger = logging.getLogger(__name__)
@@ -50,6 +50,64 @@ def _anthropic_tool_schema(tool: Any) -> dict[str, Any]:
         "description": tool.description,
         "input_schema": tool.public_input_schema,
     }
+
+
+# Anthropic prompt-caching breakpoint (ephemeral, 5-minute TTL by default).
+# Prefix match order is tools → system → messages; mark the last tool and the
+# system block so ReAct iterations can reuse the stable prefix.
+_ANTHROPIC_CACHE_CONTROL: dict[str, str] = {"type": "ephemeral"}
+
+
+def _anthropic_cached_system(system: str) -> list[dict[str, Any]]:
+    return [
+        {
+            "type": "text",
+            "text": system,
+            "cache_control": dict(_ANTHROPIC_CACHE_CONTROL),
+        }
+    ]
+
+
+def _anthropic_tools_with_cache(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not tools:
+        return tools
+    cached = [dict(tool) for tool in tools]
+    cached[-1] = {**cached[-1], "cache_control": dict(_ANTHROPIC_CACHE_CONTROL)}
+    return cached
+
+
+def _anthropic_messages_with_cache(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Mark the newest message's last content block as a cache breakpoint.
+
+    Tools and system cover the static prefix; this marker lets the growing
+    conversation history accrue incremental cache hits across ReAct
+    iterations. Copies, never mutates — the caller reuses ``messages`` on
+    retries. Content that cannot carry a marker (empty text, unknown shapes)
+    is left untouched.
+    """
+    if not messages:
+        return messages
+    last = messages[-1]
+    content = last.get("content")
+    if isinstance(content, str) and content:
+        marked_content: list[Any] = [
+            {
+                "type": "text",
+                "text": content,
+                "cache_control": dict(_ANTHROPIC_CACHE_CONTROL),
+            }
+        ]
+    elif isinstance(content, list) and content and isinstance(content[-1], dict):
+        # Copy every block, not just the marked one: the transcript is reused
+        # across ReAct iterations, and a shared dict would let a later payload
+        # mutation write through into live history.
+        marked_content = [
+            dict(block) if isinstance(block, dict) else block for block in content[:-1]
+        ]
+        marked_content.append({**content[-1], "cache_control": dict(_ANTHROPIC_CACHE_CONTROL)})
+    else:
+        return messages
+    return [*messages[:-1], {**last, "content": marked_content}]
 
 
 class AnthropicAgentClient:
@@ -143,12 +201,12 @@ class AnthropicAgentClient:
         kwargs: dict[str, Any] = {
             "model": self._model,
             "max_tokens": self._max_tokens,
-            "messages": strip_internal_message_markers(messages),
+            "messages": _anthropic_messages_with_cache(strip_internal_message_markers(messages)),
         }
         if system:
-            kwargs["system"] = system
+            kwargs["system"] = _anthropic_cached_system(system)
         if tools:
-            kwargs["tools"] = tools
+            kwargs["tools"] = _anthropic_tools_with_cache(tools)
 
         backoff = _RETRY_INITIAL_BACKOFF_SEC
         last_err: Exception | None = None
@@ -252,11 +310,14 @@ class AnthropicAgentClient:
             elif block_type == "tool_use":
                 tool_calls.append(ToolCall(id=block.id, name=block.name, input=dict(block.input)))
 
+        cache_read, cache_write = extract_cache_tokens(getattr(response, "usage", None))
         return AgentLLMResponse(
             content="".join(text_parts),
             tool_calls=tool_calls,
             stop_reason=str(getattr(response, "stop_reason", "end_turn")),
             raw_content=content_blocks,
+            cache_read_tokens=cache_read,
+            cache_creation_tokens=cache_write,
         )
 
     @staticmethod
