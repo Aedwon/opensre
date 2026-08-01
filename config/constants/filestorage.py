@@ -25,6 +25,13 @@ REMOTE_SYNC_PREFIX_ENV = "OPENSRE_REMOTE_SYNC_PREFIX"
 REMOTE_SYNC_REGION_ENV = "OPENSRE_REMOTE_SYNC_REGION"
 # Named credentials profile, for users who keep opensre credentials separate.
 REMOTE_SYNC_PROFILE_ENV = "OPENSRE_REMOTE_SYNC_PROFILE"
+# Comma-separated glob patterns held back from the sync. Subtractive only: a
+# pattern can shrink what mirrors, never widen it past the credential deny-list.
+REMOTE_SYNC_EXCLUDE_ENV = "OPENSRE_REMOTE_SYNC_EXCLUDE"
+# Turns the configured exclusions off for one run. A separate switch rather than
+# a reserved pattern value: every value the pattern field accepts is also a legal
+# glob, so a sentinel would steal that filename from anyone wanting to exclude it.
+REMOTE_SYNC_EXCLUDE_OFF_ENV = "OPENSRE_REMOTE_SYNC_EXCLUDE_OFF"
 # Vercel Blob read-write token (ambient; never stored by opensre).
 # Same name Vercel documents for @vercel/blob / vercel CLI.
 BLOB_READ_WRITE_TOKEN_ENV = "BLOB_READ_WRITE_TOKEN"
@@ -38,6 +45,8 @@ __all__ = [
     "DEFAULT_REMOTE_SYNC_PROVIDER",
     "REMOTE_SYNC_BUCKET_ENV",
     "REMOTE_SYNC_ENV",
+    "REMOTE_SYNC_EXCLUDE_ENV",
+    "REMOTE_SYNC_EXCLUDE_OFF_ENV",
     "REMOTE_SYNC_PREFIX_ENV",
     "REMOTE_SYNC_PROFILE_ENV",
     "REMOTE_SYNC_PROVIDER_ENV",

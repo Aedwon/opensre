@@ -18,12 +18,15 @@ from config.constants.filestorage import (
     DEFAULT_REMOTE_SYNC_PROVIDER,
     REMOTE_SYNC_BUCKET_ENV,
     REMOTE_SYNC_ENV,
+    REMOTE_SYNC_EXCLUDE_ENV,
+    REMOTE_SYNC_EXCLUDE_OFF_ENV,
     REMOTE_SYNC_PREFIX_ENV,
     REMOTE_SYNC_PROFILE_ENV,
     REMOTE_SYNC_PROVIDER_ENV,
     REMOTE_SYNC_REGION_ENV,
 )
 from platform.filestorage.errors import RemoteSyncConfigError
+from platform.filestorage.exclusions import NO_EXCLUSIONS, ExclusionRules, parse_exclusions
 
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
 
@@ -36,6 +39,10 @@ class RemoteSyncConfig:
     or Vercel Blob store name/id; community backends may reuse the field).
     Provider-specific fields (``profile``, ``region``) are ignored by backends
     that do not need them.
+
+    ``exclude`` narrows what mirrors. It cannot widen it: the credential
+    deny-list is enforced separately, in
+    :mod:`platform.filestorage.syncable`.
     """
 
     bucket: str
@@ -43,6 +50,7 @@ class RemoteSyncConfig:
     prefix: str = DEFAULT_REMOTE_SYNC_PREFIX
     region: str = ""
     profile: str = ""
+    exclude: ExclusionRules = NO_EXCLUSIONS
 
     def key_for(self, relative_key: str) -> str:
         """Full object key for a path relative to the synced root."""
@@ -85,6 +93,27 @@ def _env_or_stored(
     if value is None:
         return ""
     return str(value).strip()
+
+
+def _exclusions(stored: Callable[[], dict[str, Any]]) -> ExclusionRules:
+    """Patterns from the environment, else the stored list.
+
+    Kept apart from :func:`_env_or_stored` because the stored form may be a
+    YAML list while the environment can only ever be one string, and a list
+    must not be flattened to ``"['a', 'b']"`` on the way through.
+
+    An empty variable means "not set", as it does for every other setting here,
+    so the stored patterns still apply. Reading it as "exclude nothing" would
+    make ``export OPENSRE_REMOTE_SYNC_EXCLUDE=$UNSET`` silently upload the paths
+    the user asked to keep local. Turning the list off for a run is its own
+    switch, which has to be set on purpose and cannot be produced by a blank.
+    """
+    if _truthy(os.getenv(REMOTE_SYNC_EXCLUDE_OFF_ENV, "")):
+        return NO_EXCLUSIONS
+    env = os.getenv(REMOTE_SYNC_EXCLUDE_ENV, "").strip()
+    if env:
+        return parse_exclusions(env)
+    return parse_exclusions(stored().get("exclude"))
 
 
 def remote_sync_enabled() -> bool:
@@ -136,6 +165,7 @@ def load_remote_sync_config() -> RemoteSyncConfig | None:
         prefix=prefix,
         region=_env_or_stored(REMOTE_SYNC_REGION_ENV, "region", stored),
         profile=_env_or_stored(REMOTE_SYNC_PROFILE_ENV, "profile", stored),
+        exclude=_exclusions(stored),
     )
 
 

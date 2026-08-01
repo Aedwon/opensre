@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 from rich.console import Console
+from rich.markup import escape
 
 from config.constants.filestorage import (
     DEFAULT_REMOTE_SYNC_PREFIX,
@@ -14,8 +15,10 @@ from platform.filestorage import OrgScopeNotSupportedError, RemoteSyncError
 from platform.filestorage.enums import RemoteSyncSubcommand
 from platform.filestorage.messages import (
     DISABLED_HELP,
+    format_exclusion_lines,
     format_report_lines,
     format_setup_lines,
+    root_state,
 )
 from platform.filestorage.operations import get_sync_status, run_remote_sync
 from platform.filestorage.setup import RemoteSyncSetupRequest, save_remote_sync_settings
@@ -50,8 +53,14 @@ def _print_status(console: Console) -> bool:
     cfg = status.config
     console.print(f"Remote sync is on ({cfg.provider}) → [{HIGHLIGHT}]{cfg.bucket}/{cfg.prefix}[/]")
     for root in status.roots:
-        state = "exists" if root.exists else "not created yet"
-        console.print(f"  {root.name:<10} {root.path} [{DIM}]({state})[/]")
+        console.print(f"  {root.name:<10} {root.path} [{DIM}]({root_state(root)})[/]")
+    for line in format_exclusion_lines(status.exclusions):
+        # Pattern lines carry user-written glob text (character classes like
+        # "[a-z]" are ordinary fnmatch syntax), so it must be escaped before
+        # it reaches Rich markup — unescaped, "[/]" inside a pattern raises
+        # MarkupError and crashes this command on every surface it serves,
+        # gateway chat included.
+        console.print(f"[{DIM}]{escape(line)}[/]")
     console.print(f"[{DIM}]Never uploaded: integration credentials and model keys.[/]")
     return True
 
