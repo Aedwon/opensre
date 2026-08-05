@@ -99,6 +99,7 @@ When you type `/` and browse completions with the arrow keys, the full descripti
 | `/background` | Run investigations async; track RCAs and completion notifications |
 | `/loops` | List, create, run once, and debug recurring prompt loops |
 | `/tasks` | List recent and in-flight background tasks |
+| `/work` | List, add, complete, and prioritize human work items |
 | `/cancel <id>` | Cancel a running task by id **elevated** |
 | `/stop` | Guidance for stopping investigations and background work |
 
@@ -680,6 +681,7 @@ Shows persistence on/off, redaction on/off, retention cap, history file path, bu
 ## Tasks and background work
 
 Long-running work is tracked in a per-session task registry surfaced by `/tasks`.
+Human todos and reminders are tracked separately by `/work`.
 
 ### Task kinds
 
@@ -1142,6 +1144,7 @@ You do not need to memorize every slash command. Examples:
 | Connected integrations | `/integrations list` |
 | Tools | `/tools` |
 | Background tasks | `/tasks` |
+| Human todos and reminders | `/work` |
 | MCP servers | `/mcp list` |
 | Cron jobs | `/loops` or `/cron list` |
 | Past REPL sessions | `/sessions` |

@@ -21,6 +21,8 @@ class TaskKind(StrEnum):
     SENTRY_UPTIME_WATCH = "sentry_uptime_watch"
     GITHUB_PR_SWEEP = "github_pr_sweep"
     POSTHOG_METRIC_REPORT = "posthog_metric_report"
+    WORK_ITEM_REMINDER = "work_item_reminder"
+    WORK_ITEM_CHECKIN = "work_item_checkin"
 
 
 class TaskStatus(StrEnum):

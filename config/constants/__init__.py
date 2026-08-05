@@ -193,6 +193,7 @@ from config.constants.paths import (
     ensure_opensre_tmp_dir,
     get_memory_dir,
     get_store_path,
+    get_work_items_dir,
     integrations_store_path,
     opensre_home,
     session_home,
@@ -310,6 +311,7 @@ from config.constants.twilio import (
     WHATSAPP_DEFAULT_TO_ENV,
 )
 from config.constants.vercel import VERCEL_API_TOKEN_ENV, VERCEL_TEAM_ID_ENV
+from config.constants.work_items import OPENSRE_WORK_ITEMS_DIR_ENV
 from config.constants.x_mcp import X_MCP_AUTH_TOKEN_ENV, X_MCP_URL_ENV
 
 __all__ = [
@@ -453,6 +455,7 @@ __all__ = [
     "OPENSRE_MEMORY_DIR_ENV",
     "OPENSRE_MEMORY_DISABLED_ENV",
     "OPENSRE_MEMORY_GATEWAY_ENABLED_ENV",
+    "OPENSRE_WORK_ITEMS_DIR_ENV",
     "OPENSRE_TMP_DIR",
     "ORGANIZATION_ID_ENV",
     "CREDENTIALS_API_URL_ENV",
@@ -546,6 +549,7 @@ __all__ = [
     "ensure_opensre_tmp_dir",
     "get_memory_dir",
     "get_store_path",
+    "get_work_items_dir",
     "integrations_store_path",
     "opensre_home",
     "session_home",

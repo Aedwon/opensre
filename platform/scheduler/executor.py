@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 
@@ -19,7 +20,7 @@ from platform.scheduler.loop_constants import (
     LOOP_TELEGRAM_CHAT_ID_PARAM,
 )
 from platform.scheduler.tasks import build_message
-from platform.scheduler.types import Provider, ScheduledTask, TaskStatus
+from platform.scheduler.types import Provider, ScheduledTask, TaskKind, TaskStatus
 
 logger = logging.getLogger(__name__)
 
@@ -78,8 +79,8 @@ def execute_task(
         logger.info("Task %s produced no message; delivery skipped", task.id)
         return True
 
-    # Deliver to the configured provider
-    ok, error, message_id = _deliver(task, message)
+    # Deliver to the configured provider, or fan out when delivery_targets are present.
+    ok, error, message_id = _deliver_all(task, message)
 
     if ok:
         complete_run(
@@ -91,6 +92,7 @@ def execute_task(
             provider=_run_provider_label(task),
         )
         _emit_analytics(task, TaskStatus.SUCCESS, error=error)
+        _record_work_item_reminder_delivery(task)
         if error:
             logger.warning(
                 "Task %s delivered with partial channel failures (message_id=%s): %s",
@@ -104,6 +106,29 @@ def execute_task(
     else:
         _record_failure(task, fire_time, error)
         return False
+
+
+def _record_work_item_reminder_delivery(task: ScheduledTask) -> None:
+    """Persist ``last_reminded_at`` only after a reminder was delivered."""
+    if task.kind is not TaskKind.WORK_ITEM_REMINDER:
+        return
+    item_id = task.params.get("work_item_id", "").strip()
+    if not item_id:
+        return
+    from pathlib import Path
+
+    from core.domain.work_items import now_iso, set_work_item_last_reminded
+
+    store_path_text = task.params.get("store_path", "").strip()
+    store_path = Path(store_path_text).expanduser() if store_path_text else None
+    try:
+        set_work_item_last_reminded(item_id, now_iso(), store_path=store_path)
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "Failed to record last_reminded_at for work item %s after delivery",
+            item_id,
+            exc_info=True,
+        )
 
 
 def _deliver(
@@ -136,6 +161,62 @@ def _deliver_single(task: ScheduledTask, message: str) -> tuple[bool, str, str]:
         return _deliver_interactive_shell(task, message)
     else:
         return False, f"Unsupported provider: {task.provider}", ""
+
+
+def _deliver_all(task: ScheduledTask, message: str) -> tuple[bool, str, str]:
+    targets = _delivery_targets_for_task(task)
+    if len(targets) == 1:
+        return _deliver(task, message)
+
+    failures: list[str] = []
+    message_ids: list[str] = []
+    for provider, chat_id in targets:
+        target_task = task.model_copy(update={"provider": provider, "chat_id": chat_id})
+        ok, error, message_id = _deliver(target_task, message)
+        if ok:
+            if message_id:
+                message_ids.append(f"{provider.value}:{chat_id or '<default>'}:{message_id}")
+            else:
+                message_ids.append(f"{provider.value}:{chat_id or '<default>'}")
+            continue
+        failures.append(f"{provider.value}:{chat_id or '<default>'}: {error}")
+
+    if failures:
+        return False, "; ".join(failures), ",".join(message_ids)
+    return True, "", ",".join(message_ids)
+
+
+def _delivery_targets_for_task(task: ScheduledTask) -> tuple[tuple[Provider, str], ...]:
+    raw_targets = task.params.get("delivery_targets", "").strip()
+    targets: list[tuple[Provider, str]] = []
+    if raw_targets:
+        try:
+            parsed = json.loads(raw_targets)
+        except json.JSONDecodeError:
+            parsed = []
+        if isinstance(parsed, list):
+            for entry in parsed:
+                if not isinstance(entry, dict):
+                    continue
+                provider_text = str(entry.get("provider", "")).strip().lower()
+                if not provider_text:
+                    continue
+                try:
+                    provider = Provider(provider_text)
+                except ValueError:
+                    continue
+                targets.append((provider, str(entry.get("chat_id", "")).strip()))
+    if not targets:
+        targets.append((task.provider, task.chat_id))
+
+    seen: set[tuple[Provider, str]] = set()
+    unique: list[tuple[Provider, str]] = []
+    for target in targets:
+        if target in seen:
+            continue
+        seen.add(target)
+        unique.append(target)
+    return tuple(unique)
 
 
 def _loop_delivery_providers(task: ScheduledTask) -> tuple[tuple[Provider, ...], str]:
