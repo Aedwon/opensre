@@ -10,18 +10,20 @@ tests tree.
 | Production entry (slash ports) | CLI: `opensre gateway start` / `--foreground` (composition root outside this package) |
 | Package main | `main.py` — **fails closed** (no slash-port glue; not a production entry) |
 | Composition root / process | `core/runtime/manager.py` (`GatewayManager`; inject `slash_ports_factory`) |
-| Channels (web + chat composer) | `channels/` (`start_channels` / `ChannelsHandle`) |
+| Surface startup (web + chat composer) | `startup.py` (`start_gateway` / `StartedGateway`) |
 | Daemon pidfile / status | `core/runtime/daemon.py` |
 | Turn callback | `core/runtime/turn_handler.py` |
-| Sink + callback contracts | `core/runtime/sink_protocol.py` |
+| Transport API (spec, worker, sink, callback) | `core/transport_api/` |
+| Turn middleware (decision, policy, approvals, stop, locks) | `core/middleware/` |
 | Config / transport errors | `core/runtime/errors.py` (`GatewayConfigurationError`, `GatewayTransportFailedError`) |
 | Web surface (FastAPI) | `web/webapp.py` (`app`) |
-| Chat registry (inside channels) | `channels/chat.py` (`start_transports` / `stop_transports`) |
+| Transport registry | `startup.py` (`TRANSPORTS` / `start_transports` / `stop_transports`) |
 | Telegram start | `transports/telegram/startup.py` (`start_telegram_worker`) |
 | Slack start | `transports/slack/startup.py` (`start_slack_worker`) |
 | Discord start | `transports/discord/startup.py` (`start_discord_worker`) |
+| Buzz start | `transports/buzz/startup.py` (`start_buzz_worker`) |
 
-Bare `python -m gateway.main` and `manager.main()` / `start_gateway()` without
+Bare `python -m gateway` and `manager.main()` / `start_gateway()` without
 `slash_ports_factory` exit with a clear error. Unit tests may construct
 `GatewayManager(...)` directly (factory optional there).
 
@@ -31,21 +33,21 @@ Bare `python -m gateway.main` and `manager.main()` / `start_gateway()` without
 start_gateway()
   → configure_process(GATEWAY_PROFILE)
   → compose turn handler
-  → start_channels()   # delegates to gateway.channels (web + chat)
-  → start_scheduler()  # peer of channels — not a "channel"
+  → start_surfaces()   # delegates to gateway/startup.py (web + chat)
+  → start_scheduler()  # peer of the surfaces — not one of them
   → ready
 ```
 
-- **Channels** live in `gateway/channels/` — sole composer of web + Telegram /
+- **Surface startup** lives in `gateway/startup.py` — sole composer of web + Telegram /
   Slack / Discord. Manager keeps only `ChannelsHandle`.
 - Missing chat credentials → `not configured`; readiness/runtime failures →
   `failed`. The rest still start.
-- **Scheduler** starts after channels and is a peer (cron / loops), not a
+- **Scheduler** starts after the surfaces and is a peer (cron / loops), not a
   transport. Daemon pidfile/status stays in `core/runtime/daemon.py` — do not
   fold the process daemon into a "scheduler" package.
 - `gateway.core` must not import `gateway.transports` / `gateway.web`; only
-  `manager.py` imports `gateway.channels`.
-- Peer transports and `web` must not import `gateway.channels`.
+  `manager.py` imports `gateway.startup`.
+- Peer transports and `web` must not import `gateway.startup`.
 
 ## Layout
 
@@ -54,25 +56,25 @@ Packages are split like `core/agent_harness/prompts/`: **core infra** vs
 
 - `core/` — process and leaf infrastructure (`runtime`, `storage`,
   `billing`, `attachments`, `session`, `config`). No imports from transports
-  or `web`. Only `core/runtime/manager.py` imports `gateway.channels`.
-- `channels/` — starts/stops web + chat transports as one consumer set.
+  or `web`. Only `core/runtime/manager.py` imports `gateway.startup`.
+- `startup.py` — starts/stops web + chat transports as one consumer set.
   Imports `web/` and each peer's `startup` only.
 - `transports/` — chat peers (`slack`, `discord`, `telegram`). Each owns
   settings, inbound worker, security, output sink, and `startup.py`. Peers
-  never import each other or `channels`/`web`; anything two need belongs in
+  never import each other or `gateway.startup`/`web`; anything two need belongs in
   `core/` (usually `gateway.core.runtime`).
 - `web/` — web surface (FastAPI app, investigations API, worker/artifacts).
-  May import `core/`; must not import chat transports or `channels`.
+  May import `core/`; must not import chat transports or `gateway.startup`.
 - `core/storage/session/resolver.py` — per-conversation session binding
   keyed by platform; delegates create / resolve / rotate to `SessionManager`.
 
 ### Dependency rule (acyclic)
 
 ```
-core.manager  →  channels  →  transports.{telegram,slack,discord}.startup
+core.manager  →  startup.py  →  transports.{telegram,slack,discord,buzz}.startup
                            →  web
 peer transports · web  →  core leaves
-(peers never import each other, channels, or each other's packages)
+(peers never import each other, `gateway.startup`, or each other's packages)
 ```
 
 Package DAG and peer isolation are pinned by border tests. Keep gateway tests
@@ -162,7 +164,7 @@ serialize on the pool’s per-session lock; different sessions stay concurrent
 under the capacity gate. Multi-turn scheduled loops should keep one agent for
 the loop; true one-shot digests may use `AgentSession.run_headless_turn`.
 
-## Host parity (channels)
+## Host parity (chat surfaces)
 
 Same turn engine for Slack / Telegram / Discord: ingress → `GatewayTurnHandler`
 → `SessionAgentPool` → `AgentSession.chat`. Web investigate is Path-2 (separate
