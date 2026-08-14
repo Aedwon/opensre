@@ -105,6 +105,28 @@ _NOT_CONFIGURED_PATTERNS = (
     "billing is not enabled",
 )
 _QUOTA_PATTERNS = ("429", "quota", "rate limit", "too many requests", "credit")
+# Provider-SDK phrasings for "no API key at all" (as opposed to an invalid one).
+# Absence phrasings only — never a bare env-var-name match: rejected-key errors
+# also cite *_API_KEY names and must keep their real authentication message.
+_MISSING_KEY_PATTERNS = (
+    "missing credentials",
+    "api key is not set",
+    "missing api key",
+    "no api key",
+    "could not resolve authentication method",  # anthropic SDK, key/token both unset
+    "to be set",  # opensre wrapper: "requires ANTHROPIC_API_KEY to be set"
+)
+# A message matching any of these describes a key that exists but was rejected.
+_REJECTED_KEY_VETO_PATTERNS = (
+    "invalid",
+    "incorrect",
+    "expired",
+    "revoked",
+    "401",
+    "403",
+    "unauthorized",
+    "forbidden",
+)
 _AUTH_PATTERNS = (
     "authentication",
     "unauthorized",
@@ -118,6 +140,26 @@ _AUTH_PATTERNS = (
     "api_key is invalid",
     "x-api-key",
 )
+
+
+def remediate_missing_llm_credentials(message: str, *, provider: str | None = None) -> str | None:
+    """Actionable replacement text when an LLM call failed for lack of any API key.
+
+    Returns ``None`` for every other failure (invalid key, quota, timeout, …)
+    so callers fall back to their existing rendering.
+    """
+    text = message.lower()
+    if any(pattern in text for pattern in _REJECTED_KEY_VETO_PATTERNS):
+        return None
+    if not any(pattern in text for pattern in _MISSING_KEY_PATTERNS):
+        return None
+    target = provider.strip() if provider else "<provider>"
+    subject = f"No API key is set for {target}" if provider else "No LLM API key is set"
+    return (
+        f"{subject}. Run `/auth login {target}` to add one, or `/onboard` to rerun "
+        f"setup (from a terminal: `opensre auth login {target}`). "
+        f"(Provider detail: {message.strip()})"
+    )
 
 
 def classify_provider_error_kind(message: str) -> str:
