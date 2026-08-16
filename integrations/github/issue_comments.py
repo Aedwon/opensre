@@ -6,6 +6,7 @@ import json
 import os
 import sys
 from dataclasses import dataclass
+from http import HTTPStatus
 from pathlib import Path
 from typing import Any
 from urllib import error, parse, request
@@ -149,7 +150,7 @@ def send_slack_webhook(payload: dict[str, Any], webhook_url: str) -> None:
     except error.URLError as exc:
         raise RuntimeError(f"Slack webhook failed: {exc.reason}") from exc
 
-    if status_code >= 400:
+    if status_code >= HTTPStatus.BAD_REQUEST:
         raise RuntimeError(f"Slack webhook failed with HTTP {status_code}")
 
 
