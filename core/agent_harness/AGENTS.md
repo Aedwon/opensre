@@ -43,7 +43,7 @@ never embed `session_goal:…` tag grammar in painted reasons. Reason derive:
 `session_goal/continuation.py`. Flush/restore: `session_goal/persist.py`. Optional LLM
 confirm for the tool-evidence path: `build_session_goal_llm_evaluator` in
 `session_goal/confirm.py` (pass as `evaluate=` to the session-goal loop) —
-closed `SessionGoalConfirmVerdict` via structured output, not free-text scrape.
+closed `ClosedGoalVerdict` via structured output, not free-text scrape.
 No host wires it by default; opt in when a second opinion is worth the tokens.
 Package rules: `session_goal/AGENTS.md`. Borders SoT (local notes):
 `opensre-notes/goal-core-system-design-aug2026.html`.
