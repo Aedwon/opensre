@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Any
 from urllib import error, parse, request
 
+from config.constants.slack import SLACK_GITHUB_ISSUES_WEBHOOK_URL_ENV, SLACK_WEBHOOK_URL_ENV
+
 MAX_COMMENT_PREVIEW_CHARS = 500
 
 
@@ -160,7 +162,7 @@ def main() -> int:
     event_path = _string(os.getenv("GITHUB_EVENT_PATH"))
     repository = _string(os.getenv("GITHUB_REPOSITORY"))
     webhook_url = _string(
-        os.getenv("SLACK_GITHUB_ISSUES_WEBHOOK_URL") or os.getenv("SLACK_WEBHOOK_URL")
+        os.getenv(SLACK_GITHUB_ISSUES_WEBHOOK_URL_ENV) or os.getenv(SLACK_WEBHOOK_URL_ENV)
     )
 
     if not event_path:
