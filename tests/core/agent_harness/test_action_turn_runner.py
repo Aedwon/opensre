@@ -8,12 +8,14 @@ and ``bind_turn`` refreshes the runner when output or hooks change.
 from __future__ import annotations
 
 import inspect
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
 from core.agent_harness.runtime import ActionTurnRunner, TurnBinding
 from core.agent_harness.turns.headless_adapters import BufferOutputSink, NullToolProvider
 from core.agent_harness.turns.headless_dispatch import HeadlessAgent
+from core.agent_harness.turns.port_families import HeadlessPorts
 from core.agent_harness.turns.turn_results import ToolCallingTurnResult
 from core.execution import ToolExecutionHooks
 from surfaces.interactive_shell.session import Session
@@ -71,7 +73,7 @@ def test_headless_dispatch_uses_bound_methods_not_nested_defs() -> None:
 def test_bind_turn_rebuilds_action_runner_when_output_changes() -> None:
     first = BufferOutputSink()
     second = BufferOutputSink()
-    agent = HeadlessAgent(tools=NullToolProvider(), output=first)
+    agent = HeadlessPorts(output=first).agent(tools=NullToolProvider())
     before = agent._action_runner  # noqa: SLF001
     assert before.output is first
 
@@ -83,7 +85,7 @@ def test_bind_turn_rebuilds_action_runner_when_output_changes() -> None:
 
 def test_bind_turn_rebuilds_action_runner_when_tool_hooks_change() -> None:
     hooks = ToolExecutionHooks()
-    agent = HeadlessAgent(tools=NullToolProvider())
+    agent = HeadlessPorts().agent(tools=NullToolProvider())
     before = agent._action_runner  # noqa: SLF001
 
     agent.bind_turn(TurnBinding(tool_hooks=hooks))
@@ -93,7 +95,7 @@ def test_bind_turn_rebuilds_action_runner_when_tool_hooks_change() -> None:
 
 
 def test_bind_turn_keeps_runner_when_only_accounting_changes() -> None:
-    agent = HeadlessAgent(tools=NullToolProvider())
+    agent = HeadlessPorts().agent(tools=NullToolProvider())
     before = agent._action_runner  # noqa: SLF001
     agent.bind_turn(TurnBinding(accounting=MagicMock()))
     assert agent._action_runner is before  # noqa: SLF001
@@ -110,7 +112,7 @@ def test_execute_shell_turn_adds_no_stage_of_its_own() -> None:
 
     from rich.console import Console
 
-    import surfaces.interactive_shell.runtime.shell_turn_execution as ste
+    from surfaces.interactive_shell.runtime import shell_turn_execution as ste
     from surfaces.interactive_shell.runtime.shell_agent import build_shell_agent
 
     source = inspect.getsource(ste.execute_shell_turn)
@@ -176,7 +178,7 @@ def test_a_sink_without_hooks_clears_the_previous_sinks_hooks() -> None:
     that can never arrive.
     """
     # Arrange
-    agent = HeadlessAgent(tools=NullToolProvider())
+    agent = HeadlessPorts().agent(tools=NullToolProvider())
     approval_hooks = MagicMock()
     agent.bind_turn(TurnBinding(tool_hooks=approval_hooks))
     assert agent._tool_hooks is approval_hooks  # noqa: SLF001
@@ -199,7 +201,7 @@ def test_a_binding_states_the_whole_turn_and_replace_carries_it_forward() -> Non
     from dataclasses import replace
 
     # Arrange
-    agent = HeadlessAgent(tools=NullToolProvider())
+    agent = HeadlessPorts().agent(tools=NullToolProvider())
     approval_hooks = MagicMock()
     confirm = MagicMock()
     binding = TurnBinding(tool_hooks=approval_hooks, confirm_fn=confirm, is_tty=True)
@@ -340,3 +342,93 @@ def test_a_stage_injected_on_one_turn_does_not_carry_into_the_next() -> None:
 
     # Assert — the agent is back on its own action stage.
     assert agent._execute_actions_override is None  # noqa: SLF001
+
+
+def test_handle_is_the_one_host_loop_binding_each_outer_turn() -> None:
+    """``handle`` binds the turn, dispatches, and re-binds accounting per outer turn.
+
+    Gateway and shell call this and nothing else per message; the accounting
+    factory is applied per outer turn because a session goal may run several,
+    each with different text.
+    """
+    from dataclasses import replace
+
+    from core.agent_harness.turns.port_families import HeadlessPorts
+
+    # Arrange — an agent whose action stage handles every turn; record what got bound.
+    agent = HeadlessPorts().agent(tools=NullToolProvider())
+    seen: list[tuple[str, Any]] = []
+    original_bind = agent.bind_turn
+
+    def _spy_bind(binding: TurnBinding) -> None:
+        seen.append(("bind", getattr(binding.accounting, "label", None)))
+        original_bind(binding)
+
+    def _fake_execute(text: str, *, confirm_fn=None, is_tty=None, turn_plan=None):  # type: ignore[no-untyped-def]
+        seen.append(("dispatch", text))
+        return ToolCallingTurnResult(0, 0, 0, False, True, response_text="ok")
+
+    agent.bind_turn = _spy_bind  # type: ignore[method-assign]
+    agent.bind_stages(execute_actions=_fake_execute)
+    hooks = MagicMock()
+    binding = TurnBinding(tool_hooks=hooks, is_tty=True)
+
+    def _accounting(message: str) -> Any:
+        accounting = MagicMock()
+        accounting.label = f"acct:{message}"
+        accounting.finalize.side_effect = lambda result: result
+        return accounting
+
+    # Act
+    result = agent.handle("hello", binding, accounting_factory=_accounting)
+
+    # Assert — one bind (with the factory's accounting) then one dispatch; the
+    # rest of the binding (hooks, tty) is carried unchanged.
+    assert seen == [("bind", "acct:hello"), ("dispatch", "hello")]
+    assert result.action_result is not None
+    assert agent._tool_hooks is hooks and agent._is_tty is True  # noqa: SLF001
+    assert replace(binding, accounting=None) == binding
+
+
+def test_both_hosts_reach_the_agent_through_handle_only() -> None:
+    """The host loop lives once, on the agent: neither host calls run_until_session_goal itself."""
+    import inspect
+
+    import gateway.core.runtime.turn_handler as gateway_turn
+    from surfaces.interactive_shell.runtime import shell_turn_execution as shell_turn
+
+    for module in (gateway_turn, shell_turn):
+        source = inspect.getsource(module)
+        assert "agent.handle(" in source, module.__name__
+        assert "run_until_session_goal(" not in source, module.__name__
+        assert "AgentSession(" not in source, module.__name__
+
+
+def test_handle_runs_the_goal_loop_on_the_session_the_binding_states(monkeypatch: Any) -> None:
+    """A rebound session is the goal loop's session, not the previously bound one.
+
+    Gateway resolves a fresh ``SessionCore`` per message; if ``handle`` handed the
+    loop the agent's *previous* session, goal state would be read from and
+    written to a stale object.
+    """
+    from core.agent_harness.turns import headless_dispatch
+    from core.agent_harness.turns.headless_adapters import InMemorySessionState
+    from core.agent_harness.turns.port_families import HeadlessPorts
+
+    seen: dict[str, Any] = {}
+
+    def _spy_loop(chat: Any, session: Any, message: str, **kwargs: Any) -> Any:
+        seen["session"] = session
+        return SimpleNamespace(last_result=chat(message))
+
+    monkeypatch.setattr(headless_dispatch, "run_until_session_goal", _spy_loop)
+    previous = InMemorySessionState()
+    current = InMemorySessionState()
+    agent = HeadlessPorts(session=previous).agent(tools=NullToolProvider())
+    agent.bind_stages(
+        execute_actions=lambda _text, **_kw: ToolCallingTurnResult(0, 0, 0, False, True)
+    )
+
+    agent.handle("hello", TurnBinding(session=current))
+
+    assert seen["session"] is current
