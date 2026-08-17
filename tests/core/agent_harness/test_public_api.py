@@ -76,10 +76,12 @@ SPI = frozenset(
 RUNTIME = frozenset(
     {
         "ActionTurnRunner",
+        "DefaultPorts",
+        "DefaultToolProvider",
         "GatherPorts",
         "HeadlessAgent",
         "ToolCallingDeps",
-        "build_default_headless_agent",
+        "TurnBinding",
     }
 )
 
