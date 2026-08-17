@@ -11,7 +11,7 @@ import inspect
 from typing import Any
 from unittest.mock import MagicMock
 
-from core.agent_harness import ActionTurnRunner
+from core.agent_harness.runtime import ActionTurnRunner
 from core.agent_harness.turns.headless_adapters import BufferOutputSink, NullToolProvider
 from core.agent_harness.turns.headless_dispatch import HeadlessAgent
 from core.agent_harness.turns.turn_results import ToolCallingTurnResult
@@ -19,13 +19,15 @@ from core.execution import ToolExecutionHooks
 from surfaces.interactive_shell.session import Session
 
 
-def test_action_turn_runner_is_package_export() -> None:
+def test_action_turn_runner_is_exported_from_runtime_not_the_root() -> None:
     from core import agent_harness as pkg
+    from core.agent_harness import runtime
 
-    assert pkg.ActionTurnRunner is ActionTurnRunner
-    assert not hasattr(pkg, "run_action_turn")
-    assert not hasattr(pkg, "ActionRequest")
-    assert not hasattr(pkg, "execute_action_agent_turn")
+    assert runtime.ActionTurnRunner is ActionTurnRunner
+    assert not hasattr(pkg, "ActionTurnRunner")
+    assert not hasattr(runtime, "run_action_turn")
+    assert not hasattr(runtime, "ActionRequest")
+    assert not hasattr(runtime, "execute_action_agent_turn")
 
 
 def test_action_turn_runner_run_accepts_confirm_fn(monkeypatch: Any) -> None:
@@ -97,48 +99,43 @@ def test_bind_turn_keeps_runner_when_only_accounting_changes() -> None:
     assert agent._action_runner is before  # noqa: SLF001
 
 
-def test_execute_shell_turn_binds_via_named_bindings_type() -> None:
+def test_execute_shell_turn_binds_stages_through_the_harness_agent() -> None:
+    """The shell drives its turn on ``HeadlessAgent`` and binds injected stages via ``bind_stages``."""
     import surfaces.interactive_shell.runtime.shell_turn_execution as ste
 
     source = inspect.getsource(ste.execute_shell_turn)
-    assert "def execute_bound" not in source
-    assert "def answer_bound" not in source
-    assert "def gather_bound" not in source
-    assert "_ShellTurnBindings" in source
-    assert "action_runner" in source
-    assert hasattr(ste._ShellTurnBindings, "execute_actions")
-    assert hasattr(ste._ShellTurnBindings, "answer_question")
-    assert hasattr(ste._ShellTurnBindings, "gather_evidence")
+    assert "build_shell_agent" in source
+    assert "bind_stages" in source
+    assert "_ShellTurnBindings" not in source
+    assert "ShellActionRunner" not in source
 
 
-def test_shell_action_runner_keeps_core_runner_across_console_rebind() -> None:
+def test_shell_agent_keeps_core_runner_across_console_rebind() -> None:
     from rich.console import Console
 
-    from surfaces.interactive_shell.runtime.action_turn import ShellActionRunner
+    from surfaces.interactive_shell.runtime.shell_agent import build_shell_agent
 
     first = Console(file=MagicMock())
     second = Console(file=MagicMock())
-    runner = ShellActionRunner(session=Session(), console=first)
-    before = runner._action_runner  # noqa: SLF001
+    agent = build_shell_agent(Session(), first)
+    before = agent._action_runner  # noqa: SLF001
 
-    runner.bind_turn(console=second)
-    after = runner._action_runner  # noqa: SLF001
+    agent.bind_turn(console=second)
+    after = agent._action_runner  # noqa: SLF001
 
     assert after is before
-    assert runner._console is second  # noqa: SLF001
 
 
-def test_shell_action_runner_rebuilds_when_external_output_changes() -> None:
+def test_shell_agent_rebuilds_runner_when_external_output_changes() -> None:
     from rich.console import Console
 
-    from surfaces.interactive_shell.runtime.action_turn import ShellActionRunner
+    from surfaces.interactive_shell.runtime.shell_agent import build_shell_agent
 
-    console = Console(file=MagicMock())
-    runner = ShellActionRunner(session=Session(), console=console)
-    before = runner._action_runner  # noqa: SLF001
+    agent = build_shell_agent(Session(), Console(file=MagicMock()))
+    before = agent._action_runner  # noqa: SLF001
 
-    runner.bind_turn(output=BufferOutputSink())
-    after = runner._action_runner  # noqa: SLF001
+    agent.bind_turn(output=BufferOutputSink())
+    after = agent._action_runner  # noqa: SLF001
 
     assert after is not before
 
@@ -183,3 +180,48 @@ def test_omitting_hooks_leaves_them_attached() -> None:
 
     # Assert
     assert agent._tool_hooks is approval_hooks  # noqa: SLF001
+
+
+def test_long_lived_shell_agent_receives_each_turns_confirm_fn_and_tty() -> None:
+    """A rebound turn's ``confirm_fn`` / ``is_tty`` reach the action stage.
+
+    The REPL builds its agent once at startup (no confirm_fn) and rebinds it per
+    turn. If the turn's confirmation callback were not rebound, a mutating
+    ``cli_exec`` would fall back to blocking ``input()`` while prompt_toolkit
+    owns stdin.
+    """
+    import io
+
+    from rich.console import Console
+
+    from surfaces.interactive_shell.runtime.shell_agent import build_shell_agent
+    from surfaces.interactive_shell.runtime.shell_turn_execution import execute_shell_turn
+
+    # Arrange — agent built like the controller does: no confirm_fn, no is_tty.
+    seen: list[tuple[Any, Any]] = []
+
+    def _confirm(_prompt: str) -> str:
+        return "y"
+
+    def _spy_execute(text: str, session: Any, console: Any, **kwargs: Any) -> ToolCallingTurnResult:
+        seen.append((kwargs.get("confirm_fn"), kwargs.get("is_tty")))
+        return ToolCallingTurnResult(0, 0, 0, False, True)
+
+    console = Console(file=io.StringIO(), force_terminal=False)
+    agent = build_shell_agent(Session(), console)
+
+    # Act — one turn on the long-lived agent, with this turn's confirm_fn / tty.
+    execute_shell_turn(
+        "run something",
+        Session(),
+        console,
+        recorder=None,
+        confirm_fn=_confirm,
+        is_tty=True,
+        agent=agent,
+        execute_actions=_spy_execute,
+        answer_agent=lambda *_a, **_k: None,
+    )
+
+    # Assert — the action stage saw the turn's callback, not the construction-time None.
+    assert seen == [(_confirm, True)]

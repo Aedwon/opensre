@@ -36,6 +36,8 @@ from core.agent_harness.ports import (
     ConfirmFn,
     ConsoleBindable,
     ErrorReporter,
+    EvidenceGatherer,
+    ExecuteActions,
     OutputBindable,
     OutputSink,
     PromptContextProvider,
@@ -43,6 +45,7 @@ from core.agent_harness.ports import (
     RunRecordFactory,
     SessionBindable,
     SessionState,
+    StreamAnswerFn,
     ToolProvider,
     TurnAccounting,
 )
@@ -52,6 +55,7 @@ from core.agent_harness.prompts.grounding import (
 )
 from core.agent_harness.turns.action_driver import (
     ActionTurnRunner,
+    ToolCallingDeps,
 )
 from core.agent_harness.turns.chat_api import ChatTurnBindings, dispatch_chat_turn
 from core.agent_harness.turns.evidence_driver import gather_tool_evidence
@@ -68,6 +72,7 @@ from core.agent_harness.turns.headless_adapters import (
     SimpleRunRecordFactory,
     StaticReasoningClientProvider,
 )
+from core.agent_harness.turns.host_cancel import host_cancel_requested
 from core.agent_harness.turns.orchestrator import stream_answer
 from core.agent_harness.turns.turn_plan import TurnPlan
 from core.agent_harness.turns.turn_results import ToolCallingTurnResult, TurnResult
@@ -120,8 +125,19 @@ class HeadlessAgent:
         confirm_fn: ConfirmFn | None = None,
         is_tty: bool | None = None,
         tool_hooks: ToolExecutionHooks | None = None,
+        deps: ToolCallingDeps | None = None,
+        execute_actions: ExecuteActions | None = None,
+        answer: StreamAnswerFn | None = None,
+        gather_evidence: EvidenceGatherer | None = None,
     ) -> None:
         self._tools = tools
+        self._deps = deps
+        self._execute_actions_override: ExecuteActions | None = None
+        self._answer_override: StreamAnswerFn | None = None
+        self._gather_override: EvidenceGatherer | None = None
+        self.bind_stages(
+            execute_actions=execute_actions, answer=answer, gather_evidence=gather_evidence
+        )
         self._session: SessionState = session if session is not None else InMemorySessionState()
         self._output: OutputSink = output if output is not None else BufferOutputSink()
         self._prompts: PromptContextProvider = (
@@ -149,6 +165,7 @@ class HeadlessAgent:
         return ActionTurnRunner(
             output=self._output,
             tools=self._tools,
+            deps=self._deps,
             error_reporter=self._error_reporter,
             tool_hooks=self._tool_hooks,
         )
@@ -177,8 +194,14 @@ class HeadlessAgent:
         tool_hooks: ToolExecutionHooks | None | _Unmentioned = _UNMENTIONED,
         session: SessionState | None = None,
         console: Any | None = None,
+        confirm_fn: ConfirmFn | None | _Unmentioned = _UNMENTIONED,
+        is_tty: bool | None | _Unmentioned = _UNMENTIONED,
     ) -> None:
         """Swap turn-scoped ports so one agent can serve many turns.
+
+        ``confirm_fn`` and ``is_tty`` are per-turn on an interactive host (the
+        REPL's cancellation-safe confirmation prompt); like ``tool_hooks``,
+        passing ``None`` clears them and omitting them leaves them alone.
 
         Per-message accounting and (when provided) the current session object
         are rebound each inbound message. ``console`` rebinds a
@@ -206,6 +229,10 @@ class HeadlessAgent:
         if not isinstance(tool_hooks, _Unmentioned):
             self._tool_hooks = tool_hooks
             runner_changed = True
+        if not isinstance(confirm_fn, _Unmentioned):
+            self._confirm_fn = confirm_fn
+        if not isinstance(is_tty, _Unmentioned):
+            self._is_tty = is_tty
         if runner_changed:
             self._action_runner = self._new_action_runner()
 
@@ -257,8 +284,6 @@ class HeadlessAgent:
     ) -> str | GatheredEvidence | None:
         if not self._gather_ports.enabled:
             return None
-        from core.agent_harness.turns.host_cancel import host_cancel_requested
-
         if host_cancel_requested(self._output):
             return None
         resolved = turn_plan.resolved_integrations if turn_plan is not None else None
@@ -273,15 +298,31 @@ class HeadlessAgent:
             is_cancelled=lambda: host_cancel_requested(self._output),
         )
 
+    def bind_stages(
+        self,
+        *,
+        execute_actions: ExecuteActions | None = None,
+        answer: StreamAnswerFn | None = None,
+        gather_evidence: EvidenceGatherer | None = None,
+    ) -> None:
+        """Replace whole stages for the next dispatches; ``None`` restores the port-driven default.
+
+        The per-turn counterpart of the constructor's stage overrides, for a
+        long-lived agent that hosts many turns with different injected seams.
+        """
+        self._execute_actions_override = execute_actions
+        self._answer_override = answer
+        self._gather_override = gather_evidence
+
     def dispatch(self, message: str) -> TurnResult:
         """Run one full turn for ``message`` via the common chat host API."""
         return dispatch_chat_turn(
             message,
             self._session,
             ChatTurnBindings(
-                execute_actions=self._execute_actions,
-                answer=self._answer,
-                gather=self._gather,
+                execute_actions=self._execute_actions_override or self._execute_actions,
+                answer=self._answer_override or self._answer,
+                gather=self._gather_override or self._gather,
                 accounting=self._take_accounting(message),
                 confirm_fn=self._confirm_fn,
                 is_tty=self._is_tty,
