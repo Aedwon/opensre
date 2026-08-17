@@ -1,13 +1,13 @@
 ---
 title: "Pull request review flow"
-description: "How Greptile, human review, CI, and automerge work on OpenSRE pull requests."
+description: "How Greptile, human review, and CI work on OpenSRE pull requests."
 ---
 
 This page describes what happens after you open a pull request: Greptile
-review, required CI, maintainer review, and the optional `automerge` label.
+review, required CI, and maintainer review.
 
-Greptile and automerge help maintainers manage the queue. They do not replace
-maintainer approval.
+Greptile helps maintainers manage the queue. It does not replace maintainer
+approval.
 
 ## Overview
 
@@ -18,8 +18,7 @@ maintainer approval.
 3. Wait for CI. The required check is **CI Gate**.
 4. Trigger Greptile and reach **Confidence Score: 5/5** with no unresolved
    threads.
-5. A maintainer reviews and either merges, requests changes, or applies the
-   `automerge` label when the pull request is ready to land on its own.
+5. A maintainer reviews and either merges or requests changes.
 
 Contribution rules:
 [CONTRIBUTING.md](https://github.com/Tracer-Cloud/opensre/blob/main/CONTRIBUTING.md).
@@ -30,7 +29,7 @@ Local checks before you push:
 
 OpenSRE uses [Greptile](https://greptile.com) for automated review. Opening or
 reopening a pull request posts a reminder comment. Treat Greptile as a human
-gate: aim for **5/5** before asking a maintainer to merge or apply `automerge`.
+gate: aim for **5/5** before asking a maintainer to merge.
 
 Trigger a review with a pull request comment:
 
@@ -79,52 +78,6 @@ re-read.
 For coordination help, ask in Discord
 [#contribute](https://discord.gg/opensre).
 
-## Automerge (maintainer opt-in)
-
-The `automerge` label is applied by maintainers after Greptile and human review
-are complete. Contributors should not add it unless a maintainer asks.
-
-When a pull request has `automerge` and is otherwise ready, automation
-squash-merges it into `main` and deletes the branch.
-
-### Preconditions
-
-- The pull request targets `main`, is open, and is not a draft
-- Required CI (and other non-skipped checks) are green
-- The branch is mergeable
-
-Greptile’s own check status is not what automerge waits on. Maintainers apply
-the label only after Greptile and human review are finished.
-
-### When the branch is behind `main`
-
-Branch protection requires pull requests to be up to date with `main`.
-Automerge merges only when GitHub reports the pull request as mergeable. A
-branch that is behind usually stays stalled until someone updates it (or
-rebases onto `main`) and CI is green again — including pull requests that
-already have the `automerge` label. Automerge does not refresh the branch.
-
-### Paths that never auto-merge
-
-Pull requests that touch these paths always require a human to merge, even with
-`automerge`:
-
-| Prefix | Reason |
-| ------ | --- |
-| `core/` | Agent runtime |
-| `platform/` | Multi-tenant platform |
-| `gateway/` | Chat and gateway surfaces |
-| `.github/workflows/` | CI and merge machinery |
-| `.github/scripts/` | Merge machinery |
-
-Automerge lists every changed file via the GitHub API (including rename
-origins). If fewer file entries are returned than the pull request’s
-changed-file count, it refuses and asks for a human, so a protected-path change
-cannot hide behind a partial list.
-
-Documentation, tests, integrations, and most surface changes can still use
-automerge when a maintainer applies the label.
-
 ## Improving a pull request during review
 
 1. Treat Greptile and maintainer comments as the action list.
@@ -138,7 +91,6 @@ automerge when a maintainer applies the label.
 ## If progress stalls
 
 - Greptile can take several minutes; do not spam `@greptile review`.
-- Automerge runs only for the `automerge` label and green checks.
 - If CI is pending, wait for the next green run.
 - If the pull request is behind `main`, update the branch (or ask a
   maintainer), then wait for CI again.
