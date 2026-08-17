@@ -17,17 +17,20 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+from tests.shared.harness_doors import PUBLIC_DOORS
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 _FORBIDDEN_PREFIX = "core.agent_harness."
 #: Modules a host may import the harness through; anything else under the
 #: prefix is a deep import.
-_PUBLIC_DOORS = frozenset(
-    {"core.agent_harness", "core.agent_harness.spi", "core.agent_harness.runtime"}
-)
 
 #: Callables whose string argument names a module to import at runtime.
 _DYNAMIC_IMPORTERS = frozenset({"import_module", "__import__"})
+
+
+def _is_public_door(module: str) -> bool:
+    return module in PUBLIC_DOORS
 
 
 def _gateway_sources() -> list[Path]:
@@ -54,7 +57,7 @@ def _submodule_imports(tree: ast.AST) -> list[str]:
             hits.extend(
                 f"import {alias.name}"
                 for alias in node.names
-                if alias.name.startswith(_FORBIDDEN_PREFIX) and alias.name not in _PUBLIC_DOORS
+                if alias.name.startswith(_FORBIDDEN_PREFIX) and not _is_public_door(alias.name)
             )
         elif isinstance(node, ast.ImportFrom):
             # ``level`` > 0 is a relative import and cannot name the harness.
@@ -62,7 +65,7 @@ def _submodule_imports(tree: ast.AST) -> list[str]:
             if (
                 node.level == 0
                 and module.startswith(_FORBIDDEN_PREFIX)
-                and module not in _PUBLIC_DOORS
+                and not _is_public_door(module)
             ):
                 hits.append(f"from {module} import …")
         elif isinstance(node, ast.Call) and _call_name(node) in _DYNAMIC_IMPORTERS:
@@ -71,7 +74,7 @@ def _submodule_imports(tree: ast.AST) -> list[str]:
                     isinstance(arg, ast.Constant)
                     and isinstance(arg.value, str)
                     and arg.value.startswith(_FORBIDDEN_PREFIX)
-                    and arg.value not in _PUBLIC_DOORS
+                    and not _is_public_door(arg.value)
                 ):
                     hits.append(f"import_module({arg.value!r})")
     return hits
@@ -90,3 +93,11 @@ def test_gateway_imports_the_harness_only_through_its_public_surface() -> None:
         "core.agent_harness instead (add it to the curated export table in "
         f"core/agent_harness/__init__.py if it is genuinely host-facing): {offenders}"
     )
+
+
+def test_an_internal_module_under_spi_is_not_a_door() -> None:
+    """Only the curated roles are public; a future ``spi/`` internal is a deep import."""
+    assert _is_public_door("core.agent_harness.spi.session_goal")
+    assert not _is_public_door("core.agent_harness.spi.internal_helper")
+    assert not _is_public_door("core.agent_harness.spi.session_goal.impl")
+    assert not _is_public_door("core.agent_harness.spi")
