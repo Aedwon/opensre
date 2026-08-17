@@ -69,6 +69,11 @@ Packages are split like `core/agent_harness/prompts/`: **core infra** vs
   May import `core/`; must not import chat transports or `gateway.startup`.
 - `core/storage/session/resolver.py` — per-conversation session binding
   keyed by platform; delegates create / resolve / rotate to `SessionManager`.
+- `core/storage` — `open_database()` gives a process its one migrated
+  `PostgresDatabase` (or `None` without `DATABASE_URL`); each domain's
+  `repository.py` has a selector (`investigation_repository(database)`) that
+  returns the Postgres or process-local implementation. Hosts call those; they
+  do not construct stores (web: `app.state.investigations`).
 
 ### Dependency rule (acyclic)
 
