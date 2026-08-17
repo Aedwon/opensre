@@ -1,12 +1,13 @@
-"""The harness's import doors are pinned exactly.
+"""The exported names of each harness API module are pinned exactly.
 
 * ``core.agent_harness`` — embedder API: entry point, config, session, results, sink.
 * ``core.agent_harness.ports`` — what a host implements: the port protocols.
 * ``core.agent_harness.spi.<role>`` — what a host calls around a turn, by role;
   the package itself exports nothing. Import-cheap.
 * ``core.agent_harness.runtime`` — build and run the agent; loads ``core.agent``.
+* ``core.agent_harness.tools`` — what an action tool implements and calls; import-cheap.
 
-Adding a name to any door is an API change made here.
+Adding a name to any API module is an API change and is made here.
 """
 
 from __future__ import annotations
@@ -19,9 +20,10 @@ import core.agent_harness as root
 import core.agent_harness.ports as ports
 import core.agent_harness.runtime as runtime
 import core.agent_harness.spi as spi_pkg
-from tests.shared.harness_doors import PUBLIC_DOORS, SPI_ROLES
+import core.agent_harness.tools as tools
+from tests.shared.harness_api import API_MODULES, SPI_ROLES
 
-PUBLIC_API = frozenset(
+ROOT_API = frozenset(
     {
         "AgentSession",
         "OutputSink",
@@ -80,11 +82,15 @@ SPI_ROLE_NAMES: dict[str, frozenset[str]] = {
     ),
     "session_state": frozenset(
         {
+            "PendingScheduleOffer",
+            "PendingUserChoice",
             "background_investigations",
             "background_mode_enabled",
             "background_notification_channels",
+            "clear_competing_pending_offers",
             "clear_pending_autosubmit",
             "compact_session_branch",
+            "exclusive_stdin_active",
             "format_recovery_note",
             "pop_turn_outcome_hint",
             "session_terminal",
@@ -96,23 +102,34 @@ SPI_ROLE_NAMES: dict[str, frozenset[str]] = {
     "cancel": frozenset({"ensure_turn_cancel", "host_cancel_requested"}),
     "accounting": frozenset(
         {
-            "SELF_RECORDING_ACTION_TOOL_NAMES",
             "DefaultTurnAccounting",
             "LlmRunInfo",
+            "SELF_RECORDING_ACTION_TOOL_NAMES",
             "ToolCallingAccountingStatus",
             "format_token_total",
             "record_llm_turn",
+            "resolve_model_name",
+            "resolve_provider_name",
         }
     ),
     "prompt_chrome": frozenset(
         {
+            "COHORT_IDENTITY_UNVERIFIED_MARK",
             "WANT_ME_TO_MARKER",
             "closer_tail_from",
             "normalize_three_tier_spacing",
+            "reply_reports_cohort_unverified",
             "strip_shell_prompt_chrome",
         }
     ),
-    "integrations": frozenset({"has_resolved_integrations", "resolve_integrations"}),
+    "integrations": frozenset(
+        {
+            "has_resolved_integrations",
+            "merge_resolved_integrations",
+            "resolve_and_cache_integrations",
+            "resolve_integrations",
+        }
+    ),
     "grounding": frozenset(
         {
             "CacheStats",
@@ -129,14 +146,17 @@ SPI_ROLE_NAMES: dict[str, frozenset[str]] = {
             "JsonlSessionStore",
             "default_session_repo",
             "default_session_store",
+            "sessions_dir",
         }
     ),
 }
 
 RUNTIME = frozenset(
     {
+        "MAX_REPORT_GATHER_ITERATIONS",
         "ActionTurnRunner",
         "AgentBusyError",
+        "AgentConfig",
         "DefaultPorts",
         "DefaultToolProvider",
         "GatherPorts",
@@ -144,18 +164,32 @@ RUNTIME = frozenset(
         "HeadlessPorts",
         "TurnBinding",
         "TurnPlan",
+        "build_agent",
+        "default_llm_factory",
+        "default_reasoning_llm_factory",
     }
 )
 
-#: Names an embedder passes into or gets back from the harness; they are also
-#: contracts, so they appear in both the api and ports doors on purpose.
+TOOLS = frozenset(
+    {
+        "EVIDENCE_KIND_VALUES",
+        "ActionToolContext",
+        "HandoffField",
+        "action_context_from_agent_context",
+        "capability_available_from_sources",
+        "coerce_gathered_evidence",
+        "execute_with_action_context",
+    }
+)
+
+#: Names that are both root API and port contracts; exported from both on purpose.
 API_PORTS_OVERLAP = frozenset({"OutputSink"})
-#: TurnBinding is a value a host builds (runtime) and a contract (ports).
+#: TurnBinding is both a runtime value a host builds and a port contract.
 RUNTIME_PORTS_OVERLAP = frozenset({"TurnBinding"})
 
 
-def test_root_exports_exactly_the_public_api() -> None:
-    assert set(root.__all__) == PUBLIC_API
+def test_root_exports_exactly_its_list() -> None:
+    assert set(root.__all__) == ROOT_API
 
 
 def test_ports_exports_exactly_its_list() -> None:
@@ -178,22 +212,27 @@ def test_runtime_exports_exactly_its_list() -> None:
     assert set(runtime.__all__) == RUNTIME
 
 
-def test_the_doors_do_not_overlap_except_where_stated() -> None:
+def test_tools_exports_exactly_its_list() -> None:
+    assert set(tools.__all__) == TOOLS
+
+
+def test_api_modules_do_not_overlap_except_where_stated() -> None:
     all_spi = frozenset().union(*SPI_ROLE_NAMES.values())
-    assert PUBLIC_API & PORTS == API_PORTS_OVERLAP
+    assert ROOT_API & PORTS == API_PORTS_OVERLAP
     assert RUNTIME & PORTS == RUNTIME_PORTS_OVERLAP
-    assert not (PUBLIC_API & all_spi)
-    assert not (PUBLIC_API & RUNTIME)
+    assert not (ROOT_API & all_spi)
+    assert not (ROOT_API & RUNTIME)
     assert not (all_spi & RUNTIME)
     assert not (all_spi & PORTS)
+    assert not (TOOLS & (ROOT_API | PORTS | RUNTIME | all_spi))
     roles = list(SPI_ROLE_NAMES.values())
     for i, a in enumerate(roles):
         for b in roles[i + 1 :]:
             assert not (a & b)
 
 
-def test_every_name_resolves_through_its_door() -> None:
-    for name in PUBLIC_API:
+def test_every_pinned_name_resolves() -> None:
+    for name in ROOT_API:
         assert getattr(root, name) is not None
     for name in PORTS:
         assert getattr(ports, name) is not None
@@ -203,17 +242,20 @@ def test_every_name_resolves_through_its_door() -> None:
             assert getattr(module, name) is not None
     for name in RUNTIME:
         assert getattr(runtime, name) is not None
+    for name in TOOLS:
+        assert getattr(tools, name) is not None
 
 
-def test_the_border_door_list_matches_the_pinned_roles() -> None:
-    """The border tests allow exactly the roles this module pins — no prefix rule."""
+def test_border_tests_and_this_pin_share_one_api_module_list() -> None:
+    """The border tests allow exactly the API modules pinned here."""
     assert frozenset(SPI_ROLE_NAMES) == SPI_ROLES
     assert {
         "core.agent_harness",
         "core.agent_harness.ports",
         "core.agent_harness.runtime",
+        "core.agent_harness.tools",
         *(f"core.agent_harness.spi.{r}" for r in SPI_ROLE_NAMES),
-    } == PUBLIC_DOORS
+    } == API_MODULES
 
 
 def test_the_root_has_no_lazy_attribute_machinery() -> None:
@@ -224,7 +266,7 @@ def test_the_root_has_no_lazy_attribute_machinery() -> None:
 def test_root_ports_and_spi_do_not_load_the_agent_loop() -> None:
     roles = ", ".join(f"core.agent_harness.spi.{r}" for r in SPI_ROLE_NAMES)
     code = (
-        f"import sys, core.agent_harness, core.agent_harness.ports, {roles}; "
+        f"import sys, core.agent_harness, core.agent_harness.ports, core.agent_harness.tools, {roles}; "
         "print('core.agent.agent' in sys.modules, "
         "'core.agent_harness.turns.action_driver' in sys.modules)"
     )
