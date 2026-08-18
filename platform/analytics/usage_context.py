@@ -17,6 +17,7 @@ import contextlib
 import threading
 from collections.abc import Iterator
 from contextvars import ContextVar, Token
+from enum import StrEnum
 from typing import Final
 from uuid import uuid4
 
@@ -27,11 +28,22 @@ type JsonScalar = str | bool | int | float
 type JsonValue = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
 type Properties = dict[str, JsonValue]
 
-SURFACE_CLI: Final[str] = "cli"
-SURFACE_SLACK: Final[str] = "slack"
-SURFACE_TELEGRAM: Final[str] = "telegram"
-SURFACE_DISCORD: Final[str] = "discord"
-SURFACE_BUZZ: Final[str] = "buzz"
+
+class UsageSurface(StrEnum):
+    CLI = "cli"
+    SLACK = "slack"
+    TELEGRAM = "telegram"
+    DISCORD = "discord"
+    BUZZ = "buzz"
+
+
+# Legacy string constants kept for backwards compatibility with callers/tests
+SURFACE_CLI: Final[str] = UsageSurface.CLI.value
+SURFACE_SLACK: Final[str] = UsageSurface.SLACK.value
+SURFACE_TELEGRAM: Final[str] = UsageSurface.TELEGRAM.value
+SURFACE_DISCORD: Final[str] = UsageSurface.DISCORD.value
+SURFACE_BUZZ: Final[str] = UsageSurface.BUZZ.value
+
 CANONICAL_SURFACES: Final[frozenset[str]] = frozenset(
     {SURFACE_CLI, SURFACE_SLACK, SURFACE_TELEGRAM, SURFACE_DISCORD, SURFACE_BUZZ}
 )
