@@ -34,6 +34,22 @@ only shrink. `web/` is on it today because `POST /investigate` embeds the agent
 directly and therefore gets none of the host layer's guarantees (agent reuse,
 approvals hooks, cancel console, capability policy).
 
+## Taking a capacity slot
+
+Every turn in this process — chat, `POST /investigate`, the investigation
+worker, a scheduled run — takes one permit from the same
+`process_turn_gate()`. Pick a policy from
+`platform.process.turn_capacity`; do not pair `acquire`/`release` by hand:
+
+- `turn_slot(gate)` — **drop** when full. For a caller holding a connection or
+  a conversation: it yields `False` and the caller answers (chat finalizes
+  `AT_CAPACITY_MESSAGE`, web returns it as a 503 body).
+- `queued_turn_slot(gate)` — **wait** for a slot. For work already claimed from
+  a queue, which cannot be told to try again.
+
+A missing `finally` leaks a permit, and a leaked permit is a process that
+answers "at capacity" forever.
+
 ## Process boot vs lifecycle
 
 Shared process setup (env → Sentry → harness adapters → capability warnings →
@@ -42,12 +58,12 @@ LLM preload) lives in
 `GatewayController.start_gateway` is lifecycle-only after logging + credential
 hydrate: configure process, compose **one** `GatewayTurnHandler(gate=…)`, then
 `start_surfaces()` (delegates to :func:`gateway.startup.start_gateway`) and
-`start_scheduler()` (hosts `platform.scheduler` in this process — not a gateway
+`start_scheduler()` (hosts `platform.scheduling.scheduler` in this process — not a gateway
 surface and not a `gateway/scheduler/` package). Do not wrap the turn handler in a
 second handler class. Do not reintroduce a bootstrap essay in the controller.
 Hosting is a thin call: `scheduler_runners().gated(turn_gate).install()` then
-:func:`platform.scheduler.runner.start_background_scheduler`. Reload is
-:func:`platform.scheduler.reload_signal.request_scheduler_reload` (shell/CLI
+:func:`platform.scheduling.scheduler.runner.start_background_scheduler`. Reload is
+:func:`platform.scheduling.scheduler.reload_signal.request_scheduler_reload` (shell/CLI
 writers); the controller only polls and resyncs.
 
 Process boot has one entrypoint: :func:`bootstrap.process.configure_process`

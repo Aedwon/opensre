@@ -5,12 +5,12 @@ Pinned rules (see ``gateway/AGENTS.md``):
 * Chat transports are peers — none imports another.
 * ``gateway.web`` never imports ``gateway.transports`` or ``gateway.startup``.
 * ``gateway.core`` never imports chat transports or ``gateway.web``.
-* Only ``gateway.core.runtime.controller`` may import ``gateway.startup``.
+* Only ``gateway.core.lifecycle.controller`` may import ``gateway.startup``.
 * ``gateway.transports.*`` never imports ``gateway.startup`` or ``gateway.web``.
 * ``gateway.startup`` may import peer ``*.startup`` (and ``gateway.web``); peers
   must not import channels.
 * ``gateway.core`` names no chat vendor; a transport names only its own.
-* ``platform.scheduler`` never imports ``GatewayTurnHandler`` (producer, not a
+* ``platform.scheduling.scheduler`` never imports ``GatewayTurnHandler`` (producer, not a
   chat channel — see ``gateway/AGENTS.md`` Channel vs producer).
 """
 
@@ -38,7 +38,7 @@ def _discover_transport_packages() -> tuple[str, ...]:
 
 _TRANSPORTS = _discover_transport_packages()
 
-_STARTUP_COMPOSER = "gateway/core/runtime/controller.py"
+_STARTUP_COMPOSER = "gateway/core/lifecycle/controller.py"
 
 _TRANSPORT_STARTUP_MODULES = frozenset(f"{package}.startup" for package in _TRANSPORTS)
 
@@ -242,14 +242,14 @@ def _executable_surface_references(path: Path) -> list[str]:
 def test_scheduler_never_imports_the_gateway_turn_handler() -> None:
     """A producer has no user and no sink — it must not call the chat handler.
 
-    The gateway process may host ``platform.scheduler`` (same capacity gate).
+    The gateway process may host ``platform.scheduling.scheduler`` (same capacity gate).
     Runners still enter through ``AgentSession.run_headless_turn``, not
     ``GatewayTurnHandler``. Importing the handler here is how someone "fixes"
     the scheduler into a fifth chat channel.
     """
     banned = ("gateway.core.host.turn_handler",)
-    offenders = _offenders("platform.scheduler", banned)
-    for path in _python_files("platform.scheduler"):
+    offenders = _offenders("platform.scheduling.scheduler", banned)
+    for path in _python_files("platform.scheduling.scheduler"):
         if "tests" in path.parts:
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
