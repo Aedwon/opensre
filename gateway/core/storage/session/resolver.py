@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 from core.agent_harness import SessionCore, SessionManager
 from core.agent_harness.spi.integrations import has_resolved_integrations
-from gateway.core.runtime.capability_policy import ensure_gateway_capability_policy
+from gateway.core.host.capability_policy import ensure_gateway_capability_policy
 from gateway.core.session.gateway_chat_context import inject_gateway_chat_context
 
 if TYPE_CHECKING:

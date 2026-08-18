@@ -26,11 +26,11 @@ from core.agent_harness.spi.session_goal import (
     format_session_goal_progress,
     format_session_goal_status_line,
 )
-from gateway.core.runtime.cancel_console import CancelConsole, ensure_turn_cancel
-from gateway.core.runtime.capability_policy import ensure_gateway_capability_policy
-from gateway.core.runtime.concurrency import TurnConcurrencyGate
-from gateway.core.runtime.session_agents import SessionAgentPool
-from gateway.core.runtime.status_messages import EMPTY_RESPONSE_MESSAGE
+from gateway.core.host.cancel_console import CancelConsole, ensure_turn_cancel
+from gateway.core.host.capability_policy import ensure_gateway_capability_policy
+from gateway.core.host.concurrency import TurnConcurrencyGate
+from gateway.core.host.session_agents import SessionAgentPool
+from gateway.core.host.status_messages import EMPTY_RESPONSE_MESSAGE
 from gateway.core.transport_api import GatewaySink
 from platform.analytics.cli import (
     capture_gateway_turn_completed,
