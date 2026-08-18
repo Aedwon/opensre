@@ -10,6 +10,8 @@ Pinned rules (see ``gateway/AGENTS.md``):
 * ``gateway.startup`` may import peer ``*.startup`` (and ``gateway.web``); peers
   must not import channels.
 * ``gateway.core`` names no chat vendor; a transport names only its own.
+* ``platform.scheduler`` never imports ``GatewayTurnHandler`` (producer, not a
+  chat channel — see ``gateway/AGENTS.md`` Channel vs producer).
 """
 
 from __future__ import annotations
@@ -237,6 +239,29 @@ def _executable_surface_references(path: Path) -> list[str]:
     return found
 
 
+def test_scheduler_never_imports_the_gateway_turn_handler() -> None:
+    """A producer has no user and no sink — it must not call the chat handler.
+
+    The gateway process may host ``platform.scheduler`` (same capacity gate).
+    Runners still enter through ``AgentSession.run_headless_turn``, not
+    ``GatewayTurnHandler``. Importing the handler here is how someone "fixes"
+    the scheduler into a fifth chat channel.
+    """
+    banned = ("gateway.core.host.turn_handler",)
+    offenders = _offenders("platform.scheduler", banned)
+    for path in _python_files("platform.scheduler"):
+        if "tests" in path.parts:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                for alias in node.names:
+                    if alias.name == "GatewayTurnHandler":
+                        rel = path.relative_to(REPO_ROOT)
+                        offenders.append(f"{rel} → GatewayTurnHandler")
+    assert offenders == [], "scheduler imported the chat turn handler:\n" + "\n".join(offenders)
+
+
 def test_gateway_never_names_a_surfaces_module_in_executable_code() -> None:
     """``surfaces`` is a peer package, and a spawned module path is still a dependency.
 
@@ -290,7 +315,7 @@ def test_concurrency_limited_handler_stays_out_of_production_gateway() -> None:
 def test_production_gateway_never_subclasses_core_agent() -> None:
     """Wave D4: gateway hosts HeadlessAgent; it must not own a core.agent.Agent subclass.
 
-    Chat turns reuse SessionAgentPool → DefaultPorts.agent. A production
+    Chat turns reuse SessionAgentPool → DefaultHeadlessBuild.agent. A production
     ``class …(Agent)`` under gateway/ would be a second brain beside the harness.
     """
     offenders: list[str] = []

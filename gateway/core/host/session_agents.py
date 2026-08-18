@@ -2,7 +2,7 @@
 
 Keeps agent construction out of :class:`GatewayTurnHandler` so the handler
 stays a thin dispatch/finalize orchestrator. Construction goes through
-:meth:`~core.agent_harness.turns.port_families.DefaultPorts.agent`
+:meth:`~core.agent_harness.turns.headless_build.DefaultHeadlessBuild.agent`
 once per session — not a second port-wiring stack.
 """
 
@@ -17,7 +17,13 @@ from rich.console import Console
 
 from core.agent_harness import SessionCore
 from core.agent_harness.ports import SlashPortsFactory
-from core.agent_harness.runtime import DefaultPorts, DefaultToolProvider, GatherPorts, HeadlessAgent
+from core.agent_harness.runtime import (
+    AgentBuildConfig,
+    DefaultHeadlessBuild,
+    DefaultToolProvider,
+    GatherPhase,
+    HeadlessAgent,
+)
 from gateway.core.host.capability_policy import ensure_gateway_capability_policy
 from gateway.core.host.live_sink import LiveOutputSink
 from gateway.core.host.status_messages import status_from_tool_start
@@ -50,9 +56,17 @@ class SessionAgentPool:
         *,
         console: Console,
         slash_ports_factory: SlashPortsFactory | None = None,
+        agent_build: AgentBuildConfig | None = None,
     ) -> None:
         self._console = console
         self._slash_ports_factory = slash_ports_factory
+        self._build = (
+            agent_build
+            if agent_build is not None
+            else AgentBuildConfig(
+                apply_capability_policy=ensure_gateway_capability_policy,
+            )
+        )
         self._agents: dict[str, HeadlessAgent] = {}
         self._sinks: dict[str, LiveOutputSink] = {}
         # One agent serves every turn of a session, and each turn rebinds its
@@ -101,9 +115,9 @@ class SessionAgentPool:
         Prefer :meth:`session_agent`, which holds the session's lock for the
         whole turn. This is the unsynchronised primitive it wraps.
         """
-        # Every gateway agent serves chat, so the policy is stated once here
-        # rather than at each place a session is prepared.
-        ensure_gateway_capability_policy(session)
+        policy = self._build.apply_capability_policy
+        if policy is not None:
+            policy(session)
         session_id = str(getattr(session, "session_id", "") or "")
         live_sink = self._sinks.get(session_id) if session_id else None
         if live_sink is None:
@@ -120,22 +134,35 @@ class SessionAgentPool:
             return cached
 
         observer = _ToolStatusObserver(live_sink)
-        agent = DefaultPorts(
-            session=session,
-            output=live_sink,
-            console=self._console,
-            logger=logger,
-            surface="gateway",
-        ).agent(
-            tools=DefaultToolProvider(
+        build = self._build
+        if build.build_tools is not None:
+            tools = build.build_tools(session, self._console, logger, observer)
+        else:
+            tools = DefaultToolProvider(
                 session,
                 self._console,
                 tool_action_logger=logger,
                 observer_factory=lambda _message: observer,
                 subprocess_presenter_factory=headless_subprocess_presenter_factory,
                 slash_ports_factory=self._slash_ports_factory,
-            ),
-            gather=GatherPorts(),
+            )
+        prompts = build.build_prompts(session) if build.build_prompts is not None else None
+        gather = (
+            build.build_gather(session, self._console)
+            if build.build_gather is not None
+            else GatherPhase()
+        )
+        agent = DefaultHeadlessBuild(
+            session=session,
+            output=live_sink,
+            console=self._console,
+            logger=logger,
+            surface="gateway",
+            error_reporter=build.error_reporter,
+        ).agent(
+            tools=tools,
+            prompts=prompts,
+            gather=gather,
         )
         if session_id:
             self._agents[session_id] = agent
