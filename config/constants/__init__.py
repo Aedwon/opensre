@@ -102,6 +102,7 @@ from config.constants.git import (
 )
 from config.constants.github import (
     GH_TOKEN_ENV,
+    GITHUB_API_BASE_URL,
     GITHUB_MCP_ARGS_ENV,
     GITHUB_MCP_AUTH_TOKEN_ENV,
     GITHUB_MCP_COMMAND_ENV,
@@ -482,6 +483,7 @@ __all__ = [
     "DEFAULT_POSTHOG_URL",
     "DEFAULT_SENTRY_BASE_URL",
     "GH_TOKEN_ENV",
+    "GITHUB_API_BASE_URL",
     "GITHUB_MCP_ARGS_ENV",
     "GITHUB_MCP_AUTH_TOKEN_ENV",
     "GITHUB_MCP_COMMAND_ENV",
