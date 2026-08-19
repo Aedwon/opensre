@@ -63,6 +63,7 @@ class ShellOutputSink:
         self._console.print(message, markup=False)
 
     def render_response_header(self, label: str) -> None:
+        self._console.print()
         render_response_header(self._console, label)
 
     def render_error(self, message: str) -> None:
@@ -85,13 +86,12 @@ class ShellOutputSink:
             self._console.print(f"[{DIM}]{escape(status)}[/]")
 
     def finalize(self, answer: str) -> None:
-        """Deliver the turn's final answer.
+        """Do nothing: chat fills a placeholder here, and the terminal has none.
 
-        Reached only when the turn produced text without streaming it — a
-        streamed answer already painted itself through :meth:`stream`.
+        Terminal output lands as it happens, so by the time the host finalizes
+        an unstreamed turn there is nothing left to show.
         """
-        if answer:
-            self._console.print(answer, markup=False)
+        _ = answer
 
     def stream(
         self,
