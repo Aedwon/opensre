@@ -18,7 +18,6 @@ from config.principal import StorageScope
 from config.scope_context import bound_storage_scope
 from core.agent_harness import SessionCore
 from gateway.core.billing.credits_client import CreditsOutcome, consume_credits
-from gateway.core.host.turn_callback import GatewayAgentCallback
 from gateway.core.middleware.active_turns import ActiveTurnRegistry, is_stop_command
 from gateway.core.middleware.approvals import ApprovalBroker, approval_tool_hooks
 from gateway.core.middleware.attention import GateDecision, ThreadAttentionGate
@@ -50,6 +49,7 @@ from gateway.transports.slack.processing.thread_history import (
 from gateway.transports.slack.settings import SlackGatewaySettings
 from integrations.messaging_security import MessagingPlatform
 from platform.analytics.usage_context import UsageSurface, bound_usage_context
+from platform.turn_host.turn_callback import GatewayAgentCallback
 
 
 # Only an explicit 402 from the credit ledger posts this; UNCONFIGURED /
@@ -395,10 +395,10 @@ def _slack_files_context(files: tuple[SlackInboundFile, ...], logger: logging.Lo
 def _agent_text_with_slack_context(inbound: SlackInboundMessage) -> str:
     """Prefix inbound text with the channel id + speaker for teammate targeting.
 
-    Short metadata line only — tool routing lives in action prompts. The thread
-    ts is omitted so the agent does not copy it into channel reads (which would
-    return one thread instead of channel history); the reply sink and session
-    seeding already target the triggering thread. The speaker is included as a
+    Short metadata line only; do not list tools. Omit thread ts so channel
+    reads stay channel-wide (including it would collapse history to one
+    thread). The reply sink and session seeding already target the triggering
+    thread. The speaker is included as a
     Slack mention token so multi-user threads stay attributable ("what is my
     name?" must resolve to the asker, not whoever spoke earlier); echoed back
     it renders as @name in Slack.

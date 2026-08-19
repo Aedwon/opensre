@@ -9,7 +9,6 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 
 from config.constants.gateway import NO_ACTIVE_TURN_MESSAGE
-from gateway.core.host.turn_callback import GatewayAgentCallback
 from gateway.core.middleware.active_turns import ActiveTurnRegistry, is_stop_command
 from gateway.core.middleware.approvals import ApprovalBroker
 from gateway.core.process.polling_thread import PollingBackground, start_polling_background
@@ -26,6 +25,7 @@ from gateway.transports.buzz.runtime import (
 from gateway.transports.buzz.session_rotation import conversation_key
 from gateway.transports.buzz.settings import BuzzInboundMessage, GatewaySettings
 from integrations.buzz.client import BuzzClient
+from platform.turn_host.turn_callback import GatewayAgentCallback
 
 logger = logging.getLogger(__name__)
 
@@ -231,7 +231,7 @@ async def _dispatch_turn(
 ) -> None:
     """Run one turn, then acknowledge it so the poller's cursor may advance.
 
-    Acknowledgement is wired two ways on purpose. ``on_handled`` fires on the
+    Acknowledgement is sent two ways on purpose. ``on_handled`` fires on the
     executor thread as soon as the turn body returns, which is what keeps a
     turn that finished during a cancelled shutdown from being replayed — the
     thread outlives the cancelled ``await``, so waiting for that ``await`` to

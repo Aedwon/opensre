@@ -45,8 +45,7 @@ from platform.process.turn_capacity import turn_slot  # noqa: E402
 from tools.investigation.capability import resolve_investigation_context  # noqa: E402
 
 # Standalone uvicorn and in-process gateway both need adapters for /investigate.
-# Shared boot order lives in bootstrap.process (env → sentry → adapters).
-configure_process(WEB_PROFILE)
+configure_process(WEB_PROFILE)  # env → sentry → adapters
 
 logger = logging.getLogger(__name__)
 
@@ -215,7 +214,7 @@ def investigate(req: InvestigateRequest, request: Request) -> InvestigateRespons
     if (auth_error := _gateway_auth_error(request)) is not None:
         return auth_error
 
-    from gateway.core.host.concurrency import AT_CAPACITY_MESSAGE, process_turn_gate
+    from platform.turn_host.concurrency import AT_CAPACITY_MESSAGE, process_turn_gate
 
     # Drop rather than queue: the caller is holding an HTTP connection open, so
     # it gets an answer now. Same gate chat and the scheduler take, same sentence
