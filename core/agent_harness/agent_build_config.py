@@ -14,6 +14,7 @@ from core.agent_harness.ports import (
     ErrorReporter,
     PromptContextProvider,
     SubprocessPresenterFactory,
+    ToolEventObserver,
     ToolProvider,
 )
 from core.agent_harness.turns.gather_phase import GatherPhase
@@ -32,7 +33,7 @@ class BuildTools(Protocol):
         session: Any,
         console: Any,
         logger: logging.Logger,
-        observer: Any,
+        observer: ToolEventObserver | None,
         /,
     ) -> ToolProvider:
         """Return the tools for this session."""
