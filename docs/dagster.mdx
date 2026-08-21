@@ -77,6 +77,105 @@ User Tokens inherit the user's per-deployment role. Viewer is enough for read-on
 
 > **Token type matters.** Use a **User Token**, not an **Agent Token**. Agent Tokens authenticate Hybrid agents and return HTTP 401 on GraphQL.
 
+### Quick local test
+
+```bash
+uv pip install dagster dagster-webserver   # or: pip install ...
+cat > jobs.py << 'EOF'
+from dagster import job, op
+
+
+@op
+def deploy_payment_service():
+    raise RuntimeError("payment-service deploy failed: connection refused to billing-api")
+
+
+@job
+def payment_service_deploy():
+    deploy_payment_service()
+EOF
+
+dagster dev -f jobs.py -p 3001
+```
+
+In a second terminal, launch a real run so there is something to investigate:
+
+```bash
+curl -s -X POST http://localhost:3001/graphql -H "Content-Type: application/json" -d '{
+  "query": "mutation { launchRun(executionParams: {selector: {repositoryLocationName: \"jobs.py\", repositoryName: \"__repository__payment_service_deploy\", jobName: \"payment_service_deploy\"}}) { __typename ... on LaunchRunSuccess { run { runId status } } } }"
+}'
+```
+
+```bash
+export DAGSTER_ENDPOINT="http://localhost:3001"
+```
+
+Verify:
+
+```bash
+opensre integrations verify dagster
+```
+
+```
+SERVICE │ SOURCE    │ STATUS   │ DETAIL
+dagster │ local env │ ✓ passed │ Connected to Dagster version 1.13.18.
+```
+
+Register the local instance in the store. `opensre investigate` only treats an integration as active once it is in the store, unlike `verify` which also accepts plain env vars. `opensre integrations setup dagster` is interactive; for a scriptable demo, write directly into an isolated store file instead of `~/.opensre/integrations.json` — `OPENSRE_INTEGRATIONS_STORE_PATH` is a genuine, first-class override (`config/constants/tenancy.py`), so this never touches your real config:
+
+```bash
+export OPENSRE_INTEGRATIONS_STORE_PATH=$(mktemp /tmp/opensre-dagster-demo.XXXXXX)
+python3 <<'PYEOF'
+import json, os, pathlib
+
+path = pathlib.Path(os.environ["OPENSRE_INTEGRATIONS_STORE_PATH"])
+store = json.loads(path.read_text()) if path.stat().st_size else {"version": 2, "integrations": []}
+store["integrations"].append({
+    "id": "dagster-local-demo",
+    "service": "dagster",
+    "status": "active",
+    "instances": [{"name": "default", "tags": {}, "credentials": {"endpoint": "http://localhost:3001"}}],
+})
+path.parent.mkdir(parents=True, exist_ok=True)
+path.write_text(json.dumps(store, indent=2))
+PYEOF
+```
+
+Trigger a real investigation against the failed run — this is the actual supported entrypoint, not an internal function:
+
+```bash
+opensre investigate --input-json '{
+  "alert_name": "DagsterJobFailed",
+  "severity": "critical",
+  "commonAnnotations": {
+    "summary": "Dagster job payment_service_deploy failed",
+    "job_name": "payment_service_deploy"
+  }
+}'
+```
+
+Real output from a run against this exact local job (edited for length):
+
+```
+Loading integrations: telegram, dagster
+↳ Dagster · list dagster runs (status=FAILURE)
+↳ Dagster · get dagster run logs
+
+root_cause: "The deploy_payment_service op in job payment_service_deploy
+raised RuntimeError('payment-service deploy failed: connection refused
+to billing-api') at jobs.py:6. The Dagster orchestration itself executed
+correctly; the failure originated in a downstream HTTP call to the
+billing-api dependency being refused at the TCP layer."
+
+Cited Evidence: list dagster runs, get dagster run logs
+```
+
+Teardown: `Ctrl-C` the `dagster dev` process (it uses a temporary `DAGSTER_HOME` that is removed on exit), and remove the demo store file -- since it lived entirely in its own file, deleting it is enough (no edit to your real store needed):
+
+```bash
+rm -f "$OPENSRE_INTEGRATIONS_STORE_PATH"
+```
+
 ## Investigation tools
 
 | Tool | What it does |
