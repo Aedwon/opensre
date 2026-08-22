@@ -52,6 +52,7 @@ from infrastructure.turn_host.cancel_console import CancelConsole
 from infrastructure.turn_host.concurrency import AT_CAPACITY_MESSAGE, TurnConcurrencyGate
 from infrastructure.turn_host.session_agents import SessionAgentPool
 from infrastructure.turn_host.status_messages import EMPTY_RESPONSE_MESSAGE
+from infrastructure.turn_host.turn_memory import log_turn_memory, resident_memory_bytes
 from infrastructure.turn_host.turn_output import TurnOutput
 
 
@@ -162,6 +163,7 @@ class TurnRunner:
             logger.warning("gateway_turn missing surface binding; started/completed omit surface")
             surface = None
         started = time.monotonic()
+        memory_before = resident_memory_bytes()
 
         cancel = ensure_turn_cancel(output)
         turn_console = CancelConsole(console or self._console, cancel)
@@ -213,6 +215,7 @@ class TurnRunner:
                     turn_result.answered,
                     len(outbound_text),
                 )
+                log_turn_memory(logger, memory_before)
                 # Host soft-timeout (or stop) already owns the output terminal
                 # message — do not overwrite it with empty/fallback finalize.
                 cancelled = isinstance(cancel, threading.Event) and cancel.is_set()
