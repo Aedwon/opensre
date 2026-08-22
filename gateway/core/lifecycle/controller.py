@@ -50,6 +50,18 @@ SCHEDULER_RELOAD_JOIN_TIMEOUT_SECONDS = 2.0
 CredentialHydratorFactory = Callable[[], GatewayCredentialHydrator | None]
 
 
+def _gateway_hosts_scheduler() -> bool:
+    """Whether this gateway process co-hosts the scheduler loop (default true).
+
+    Set ``OPENSRE_GATEWAY_HOST_SCHEDULER`` false to run the scheduler as its own
+    service (``MODE=scheduler``) so scheduled tasks are not fired by two processes.
+    """
+    from config.constants.scheduler import OPENSRE_GATEWAY_HOST_SCHEDULER_ENV
+
+    value = os.getenv(OPENSRE_GATEWAY_HOST_SCHEDULER_ENV)
+    return value is None or value.strip().lower() not in {"0", "false", "no", "off"}
+
+
 class GatewayController:
     """Composition root and lifecycle handle for the running gateway process."""
 
@@ -98,7 +110,11 @@ class GatewayController:
         )
 
         self.start_surfaces(logger=logger, handler=handler)
-        self.start_scheduler(logger=logger)
+        if _gateway_hosts_scheduler():
+            self.start_scheduler(logger=logger)
+        else:
+            self.components["scheduler"] = "external (dedicated MODE=scheduler service)"
+            logger.info("[gateway] in-process scheduler disabled; run it as its own service")
         self._publish_status(logger)
         # Deploy health waits (EC2 Docker + AMI) match this line for Telegram
         # and/or Slack — do not rely on transport-specific log strings alone.
@@ -191,26 +207,26 @@ class GatewayController:
         return self._stopped.wait(timeout)
 
     def _start_scheduler_reload_watcher(self, logger: logging.Logger) -> None:
-        """Poll for cross-process reload requests from `/loops` and cron mutations."""
+        """Keep the co-hosted scheduler in sync with cron / `/loops` mutations.
+
+        Uses the shared watcher (reload signal + store-file reconcile), so a
+        dropped best-effort signal still converges on the next poll.
+        """
         if self._scheduler_reload_thread is not None:
             return
 
         def _watch() -> None:
-            from infrastructure.scheduling.scheduler.reload_signal import (
-                RELOAD_POLL_SECONDS,
-                consume_scheduler_reload_request,
-            )
+            from infrastructure.scheduling.scheduler.reload_signal import watch_and_reconcile
+            from infrastructure.scheduling.scheduler.store import _default_store_path
 
-            while not self._stopped.wait(timeout=RELOAD_POLL_SECONDS):
-                if not consume_scheduler_reload_request():
-                    continue
-                try:
-                    self._reload_scheduler(logger)
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning(
-                        "Scheduler reload failed (%s)",
-                        type(exc).__name__,
-                    )
+            watch_and_reconcile(
+                self._stopped,
+                lambda: self._reload_scheduler(logger),
+                _default_store_path(),
+                on_error=lambda exc: logger.warning(
+                    "Scheduler reload failed (%s)", type(exc).__name__
+                ),
+            )
 
         self._scheduler_reload_thread = threading.Thread(
             target=_watch,

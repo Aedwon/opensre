@@ -8,12 +8,13 @@ OpenSRE deploys as a standard Python FastAPI application. Use the repository
 `Dockerfile` with Railway, EC2, ECS, Vercel, or another ASGI-capable host. For
 local containers, see [Docker](/environments/docker).
 
-The image supports two values of `MODE`:
+The image supports three values of `MODE`:
 
 | `MODE` | Runtime |
 | --- | --- |
 | `web` (default) | HTTP API — health checks, alert intake, and investigations |
 | `gateway` | Messaging gateway (Slack / Telegram) and related services |
+| `scheduler` | Dedicated cron/loop scheduler service (no gateway or web) |
 
 ## Environment setup
 
@@ -131,6 +132,24 @@ OPENSRE_MAX_CONCURRENT_TURNS=2
 
 Read the `gateway_turn_memory` debug lines (`delta_mb`, `peak_mb`) from a real run
 to size this against the task's memory limit before raising it.
+
+### Dedicated scheduler service
+
+By default the gateway process also runs the cron/loop scheduler. With more than
+one gateway task that would fire every scheduled task once per task. Run the
+scheduler as its own single service instead:
+
+- Deploy one `MODE=scheduler` task. It runs `opensre cron start --service`,
+  idling until tasks exist rather than exiting.
+- Set `OPENSRE_GATEWAY_HOST_SCHEDULER=0` on the gateway tasks so they stop
+  hosting the scheduler in-process.
+
+Run exactly one scheduler service, never one per gateway task.
+
+The scheduler service and every process that mutates tasks — the gateway,
+`opensre cron`, and `/loops` — must share the **same** task store: the same
+`OPENSRE_HOME` on a shared mount (S3 Files / EFS). The scheduler reconciles from
+that file, so a separate filesystem would leave it running a stale task set.
 
 ### Optional: conversation affinity
 
