@@ -21,7 +21,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 _SOURCE_TIERS = ("core", "gateway", "surfaces", "tools", "infrastructure", "integrations")
 
 #: The one module allowed to declare the approval gate.
-_GATE_HOME = "tools/interactive_shell/shared/host_ports.py"
+_GATE_HOME = "tools/interactive_shell/shared/host_contracts.py"
 
 #: The one module allowed to declare the factory aliases (the harness API).
 _ALIAS_HOME = "core/agent_harness/ports.py"
