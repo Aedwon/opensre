@@ -57,6 +57,18 @@ def test_timeout_user_message_does_not_echo_exception_text() -> None:
     assert "sk-secret" not in failure.tracker_message
 
 
+def test_anthropic_model_not_found_user_message_is_generic() -> None:
+    failure = classify_llm_invoke_failure(
+        RuntimeError("anthropic: model 'claude-internal-alias' was not found")
+    )
+    assert failure is not None
+    assert failure.user_message == (
+        "Anthropic model was not found. Check your configured model name."
+    )
+    assert "claude-internal-alias" not in failure.user_message
+    assert "claude-internal-alias" not in failure.tracker_message
+
+
 def test_classify_returns_none_for_credit_exhausted_so_it_propagates() -> None:
     """LLMCreditExhaustedError must propagate instead of becoming a degraded result."""
     from core.llm.shared.llm_retry import LLMCreditExhaustedError

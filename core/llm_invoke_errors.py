@@ -289,8 +289,7 @@ def classify_llm_invoke_failure(exc: BaseException) -> LLMInvokeFailure | None:
 
         if "anthropic" in err_msg and "was not found" in err_msg:
             return LLMInvokeFailure(
-                user_message=raw.strip()
-                or "Anthropic model was not found. Check your configured model name.",
+                user_message="Anthropic model was not found. Check your configured model name.",
                 tracker_message="Failed: Model not found",
                 remediation_steps=[
                     (
