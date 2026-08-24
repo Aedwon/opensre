@@ -5,6 +5,8 @@ ATTACHMENT_MAX_TOTAL_CHARS = 120_000
 CREDITS_DENIED_MESSAGE = "Out of credits — top up in the OpenSRE console."
 #: Overall SIGTERM budget for web + chat workers. Sequential stop steps share it.
 DEFAULT_STOP_TIMEOUT_SECONDS = 8.0
+#: Web is a thread join, not a network drain, so it keeps a smaller slice.
+WEB_STOP_TIMEOUT_SECONDS = 5.0
 DEFAULT_MAX_CONVERSATION_LOCKS = 1024
 NEW_SESSION_MESSAGE = "Started a new session."
 #: Inbound-decision reply sentinel: rotate the session instead of replying.
@@ -32,4 +34,5 @@ __all__ = [
     "TURN_TIMEOUT_MESSAGE",
     "UNAUTHORIZED_MESSAGE",
     "USER_STOP_MESSAGE",
+    "WEB_STOP_TIMEOUT_SECONDS",
 ]
