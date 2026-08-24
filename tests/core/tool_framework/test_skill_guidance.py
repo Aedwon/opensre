@@ -168,6 +168,32 @@ tools:
     assert 'description="A & B tool"' not in formatted
 
 
+def test_format_tool_skill_guidance_escapes_newlines_in_attributes(tmp_path: Path) -> None:
+    path = tmp_path / "SKILL.md"
+    _write_skill(
+        path,
+        """
+name: my-skill
+description: Handles A and B operations.
+tools:
+  - tool_a
+""".strip(),
+    )
+    result = load_tool_skill_guidance(path, known_tool_names=frozenset({"tool_a"}))
+    assert result.skill is not None
+
+    skill_with_newline = result.skill.__class__(
+        name=result.skill.name,
+        description="line one\nline two",
+        content=result.skill.content,
+        file_path=result.skill.file_path,
+        tool_names=result.skill.tool_names,
+    )
+    formatted = format_tool_skill_guidance(skill_with_newline)
+    assert "&#10;" in formatted
+    assert 'description="line one\nline two"' not in formatted
+
+
 def test_sentry_summary_skill_loads_and_references_correct_tools() -> None:
     """The sentry-summary SKILL.md must load cleanly and declare the four Sentry tools."""
     skill_path = (

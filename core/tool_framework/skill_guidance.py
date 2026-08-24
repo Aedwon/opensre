@@ -111,7 +111,12 @@ def load_tool_skill_guidance(
 def _xml_attr(value: str) -> str:
     """Escape a string for safe use inside an XML double-quoted attribute value."""
     return (
-        value.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;")
+        value.replace("&", "&amp;")
+        .replace('"', "&quot;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\r", "&#13;")
+        .replace("\n", "&#10;")
     )
 
 
