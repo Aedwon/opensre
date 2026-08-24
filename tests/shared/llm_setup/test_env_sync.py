@@ -573,6 +573,14 @@ def test_set_env_value_rejects_newline_injection() -> None:
         set_env_value(["FOO=bar\n"], "FOO", "ok\nTELEGRAM_BOT_TOKEN=leaked")
 
 
+def test_set_env_value_replaces_export_prefixed_assignment() -> None:
+    from config.env_file import set_env_value
+
+    lines = set_env_value(["export DD_SITE=old\n"], "DD_SITE", "datadoghq.eu")
+
+    assert lines == ["DD_SITE=datadoghq.eu\n"]
+
+
 def test_sync_env_secret_raises_when_keyring_unavailable(monkeypatch) -> None:
     monkeypatch.setattr(
         "config.env_file.save_keyring_secret",
