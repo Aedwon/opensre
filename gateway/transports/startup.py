@@ -22,6 +22,7 @@ from gateway.core.lifecycle.errors import (
     GatewayConfigurationError,
     GatewayTransportFailedError,
 )
+from gateway.core.process.shutdown_budget import ShutdownBudget
 from gateway.transports.buzz.startup import start_buzz_worker
 from gateway.transports.discord.startup import start_discord_worker
 from gateway.transports.names import TransportName
@@ -104,11 +105,15 @@ def stop_transports(
     """Stop every started transport and return whether all of them stopped.
 
     Every worker is asked to stop even after one fails, so a single stuck
-    transport cannot leave the others running.
+    transport cannot leave the others running. Workers share ``timeout``
+    sequentially: time spent joining one is subtracted from the next.
     """
+    budget = ShutdownBudget(timeout)
     stopped = True
     for handle in handles:
-        stopped = handle.worker.stop(timeout=timeout) and stopped
+        started = budget.mark()
+        stopped = handle.worker.stop(timeout=budget.remaining) and stopped
+        budget.consume(started)
     return stopped
 
 
