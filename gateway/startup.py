@@ -14,6 +14,7 @@ import logging
 from dataclasses import dataclass, field
 
 from config.constants.gateway import DEFAULT_STOP_TIMEOUT_SECONDS, WEB_STOP_TIMEOUT_SECONDS
+from gateway.core.process.shutdown_budget import ShutdownBudget
 from gateway.transports.names import TransportName
 from gateway.transports.startup import (
     TransportHandle,
@@ -37,10 +38,13 @@ class StartedGateway:
 
     def stop(self, *, timeout: float = DEFAULT_STOP_TIMEOUT_SECONDS) -> bool:
         """Stop web and every chat transport; return whether all chat workers stopped."""
+        budget = ShutdownBudget(timeout)
         if self.web_server is not None:
-            self.web_server.stop(timeout=min(timeout, WEB_STOP_TIMEOUT_SECONDS))
+            started = budget.mark()
+            self.web_server.stop(timeout=budget.take(WEB_STOP_TIMEOUT_SECONDS))
+            budget.consume(started)
             self.web_server = None
-        stopped = stop_transports(handles=list(self.transports.values()), timeout=timeout)
+        stopped = stop_transports(handles=list(self.transports.values()), timeout=budget.remaining)
         self.transports = {}
         return stopped
 
