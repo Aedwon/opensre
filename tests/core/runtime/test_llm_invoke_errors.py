@@ -40,6 +40,15 @@ def test_looks_like_timeout_without_anthropic_sdk() -> None:
         assert _looks_like_timeout(RuntimeError("request timed out")) is True
 
 
+def test_looks_like_timeout_recognizes_httpx_timeout_exception_by_class_name() -> None:
+    """httpx.TimeoutException is not a TimeoutError and may not say 'timeout'."""
+
+    class TimeoutException(Exception):
+        """Stand-in for httpx.TimeoutException without importing httpx."""
+
+    assert _looks_like_timeout(TimeoutException("deadline exceeded")) is True
+
+
 def test_classify_returns_none_for_credit_exhausted_so_it_propagates() -> None:
     """LLMCreditExhaustedError must propagate instead of becoming a degraded result."""
     from core.llm.shared.llm_retry import LLMCreditExhaustedError

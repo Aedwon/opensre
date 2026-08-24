@@ -31,8 +31,22 @@ def _timeout_remediation() -> list[str]:
     ]
 
 
+_TIMEOUT_EXCEPTION_NAMES = frozenset(
+    {
+        "APITimeoutError",
+        "ConnectTimeout",
+        "PoolTimeout",
+        "ReadTimeout",
+        "TimeoutException",
+        "WriteTimeout",
+    }
+)
+
+
 def _looks_like_timeout(exc: BaseException) -> bool:
     if isinstance(exc, TimeoutError):
+        return True
+    if type(exc).__name__ in _TIMEOUT_EXCEPTION_NAMES:
         return True
     try:
         from anthropic import APITimeoutError as AnthropicTimeoutError
