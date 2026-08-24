@@ -49,6 +49,14 @@ def test_looks_like_timeout_recognizes_httpx_timeout_exception_by_class_name() -
     assert _looks_like_timeout(TimeoutException("deadline exceeded")) is True
 
 
+def test_timeout_user_message_does_not_echo_exception_text() -> None:
+    failure = classify_llm_invoke_failure(TimeoutError("deadline with token=sk-secret"))
+    assert failure is not None
+    assert failure.user_message == "Investigation stopped: the LLM request timed out."
+    assert "sk-secret" not in failure.user_message
+    assert "sk-secret" not in failure.tracker_message
+
+
 def test_classify_returns_none_for_credit_exhausted_so_it_propagates() -> None:
     """LLMCreditExhaustedError must propagate instead of becoming a degraded result."""
     from core.llm.shared.llm_retry import LLMCreditExhaustedError

@@ -270,9 +270,8 @@ def classify_llm_invoke_failure(exc: BaseException) -> LLMInvokeFailure | None:
 
     if not isinstance(exc, RuntimeError):
         if _looks_like_timeout(exc):
-            detail = str(exc).strip() or "The LLM request timed out."
             return LLMInvokeFailure(
-                user_message=f"Investigation stopped: {detail}",
+                user_message="Investigation stopped: the LLM request timed out.",
                 tracker_message="Failed: LLM timed out",
                 remediation_steps=_timeout_remediation(),
                 root_cause_category="Investigation Error",
@@ -362,9 +361,8 @@ def classify_llm_invoke_failure(exc: BaseException) -> LLMInvokeFailure | None:
         )
 
     if _looks_like_timeout(exc):
-        detail = raw.strip() or "The LLM request timed out."
         return LLMInvokeFailure(
-            user_message=f"Investigation stopped: {detail}",
+            user_message="Investigation stopped: the LLM request timed out.",
             tracker_message="Failed: LLM timed out",
             remediation_steps=_timeout_remediation(),
             root_cause_category="Investigation Error",
