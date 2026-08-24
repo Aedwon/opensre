@@ -23,6 +23,7 @@ from typing import Any
 
 from rich.console import Console
 
+from config.constants.gateway import DEFAULT_STOP_TIMEOUT_SECONDS
 from core.agent_harness.ports import SlashPortsFactory
 from gateway import startup as gateway_startup
 from gateway.core.chat_agent_build import chat_agent_build_config
@@ -166,7 +167,7 @@ class GatewayController:
             self.components["scheduler"] = f"running {task_count} scheduled task(s)"
         self._start_scheduler_reload_watcher(logger)
 
-    def stop(self, *, timeout: float = gateway_startup.DEFAULT_STOP_TIMEOUT_SECONDS) -> bool:
+    def stop(self, *, timeout: float = DEFAULT_STOP_TIMEOUT_SECONDS) -> bool:
         """Shut down all components and return whether the chat workers stopped."""
         set_ready(False)
         self._stopped.set()

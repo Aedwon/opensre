@@ -13,9 +13,9 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
+from config.constants.gateway import DEFAULT_STOP_TIMEOUT_SECONDS
 from gateway.transports.names import TransportName
 from gateway.transports.startup import (
-    DEFAULT_STOP_TIMEOUT_SECONDS,
     TransportHandle,
     start_transports,
     stop_transports,

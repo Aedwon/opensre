@@ -17,6 +17,7 @@ import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from config.constants.gateway import DEFAULT_STOP_TIMEOUT_SECONDS
 from gateway.core.lifecycle.errors import (
     GatewayConfigurationError,
     GatewayTransportFailedError,
@@ -29,10 +30,6 @@ from gateway.transports.slack.startup import start_slack_worker
 from gateway.transports.telegram.startup import start_telegram_worker
 from gateway.transports.worker import TransportWorker
 from infrastructure.turn_host.turn_callback import TurnCallback
-
-# How long a shutdown waits on each worker before giving up on it.
-DEFAULT_STOP_TIMEOUT_SECONDS = 8.0
-
 
 TRANSPORTS: tuple[TransportRegistration, ...] = (
     TransportRegistration(TransportName.TELEGRAM, start_telegram_worker, "polling for messages"),
