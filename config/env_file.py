@@ -54,7 +54,13 @@ class _PublicEnvLines:
         return cls(tuple(public_lines))
 
     def write_to(self, target_path: Path) -> None:
-        with target_path.open("w", encoding="utf-8", newline="") as env_file:
+        """Write with owner-only mode so a new ``.env`` is never created world-readable."""
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+        if os.name != "nt":
+            descriptor = os.open(target_path, flags, 0o600)
+        else:
+            descriptor = os.open(target_path, flags)
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as env_file:
             env_file.writelines(self.lines)
 
 

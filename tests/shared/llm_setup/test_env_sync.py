@@ -541,6 +541,16 @@ def test_sync_provider_env_permission_error(tmp_path) -> None:
         env_path.chmod(stat.S_IRUSR | stat.S_IWUSR)
 
 
+@pytest.mark.skipif(os.name == "nt", reason="owner-only mode is a POSIX .env write")
+def test_sync_env_values_creates_env_file_with_owner_only_mode(tmp_path) -> None:
+    env_path = tmp_path / ".env"
+
+    sync_env_values({"DD_SITE": "datadoghq.com"}, env_path=env_path)
+
+    mode = stat.S_IMODE(env_path.stat().st_mode)
+    assert mode == 0o600
+
+
 def test_sync_env_values_rejects_sensitive_keys(tmp_path) -> None:
     env_path = tmp_path / ".env"
     env_path.write_text("FOO=bar\n", encoding="utf-8")
