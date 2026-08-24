@@ -683,6 +683,21 @@ def test_sync_env_values_empty_update_strips_fallback_secrets(tmp_path) -> None:
     assert env_path.read_text(encoding="utf-8") == ""
 
 
+def test_sync_env_values_strips_export_prefixed_secrets(tmp_path) -> None:
+    """``export KEY=value`` is still an assignment; wizard rewrites must not keep it."""
+    env_path = tmp_path / ".env"
+    env_path.write_text(
+        "export TELEGRAM_BOT_TOKEN=manual-fallback-token\nDD_SITE=old\n",
+        encoding="utf-8",
+    )
+
+    sync_env_values({"DD_SITE": "datadoghq.eu"}, env_path=env_path)
+
+    content = env_path.read_text(encoding="utf-8")
+    assert "TELEGRAM_BOT_TOKEN" not in content
+    assert "DD_SITE=datadoghq.eu" in content
+
+
 def test_sync_provider_env_preserves_custom_openai_base_url(tmp_path, monkeypatch) -> None:
     # The custom gateway base URL must survive the sync (not be stripped), and
     # custom providers must NOT get azure's OPENSRE_LLM_TRANSPORT=litellm flag.
