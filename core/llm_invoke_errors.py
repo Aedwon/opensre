@@ -354,7 +354,7 @@ def classify_llm_invoke_failure(exc: BaseException) -> LLMInvokeFailure | None:
         or ("api key" in err_msg and "invalid" in err_msg)
     ):
         return LLMInvokeFailure(
-            user_message=f"Investigation stopped: LLM authentication failed. {raw}",
+            user_message="Investigation stopped: LLM authentication failed.",
             tracker_message="Failed: LLM authentication",
             remediation_steps=[
                 "Verify API keys or CLI login for your LLM_PROVIDER.",

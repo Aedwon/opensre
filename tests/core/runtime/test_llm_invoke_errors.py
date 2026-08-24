@@ -57,6 +57,16 @@ def test_classify_returns_none_for_credit_exhausted_so_it_propagates() -> None:
     assert classify_llm_invoke_failure(err) is None
 
 
+def test_auth_failure_user_message_does_not_echo_provider_exception_text() -> None:
+    failure = classify_llm_invoke_failure(
+        RuntimeError("AuthenticationError: invalid x-api-key sk-secret-fragment")
+    )
+    assert failure is not None
+    assert failure.user_message == "Investigation stopped: LLM authentication failed."
+    assert "sk-secret-fragment" not in failure.user_message
+    assert "sk-secret-fragment" not in failure.tracker_message
+
+
 def test_cli_auth_required_uses_unknown_provider_when_attr_missing() -> None:
     CLIAuthenticationRequired = type(
         "CLIAuthenticationRequired",
