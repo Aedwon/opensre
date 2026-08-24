@@ -69,6 +69,16 @@ def test_anthropic_model_not_found_user_message_is_generic() -> None:
     assert "claude-internal-alias" not in failure.tracker_message
 
 
+def test_azure_deployment_not_found_user_message_is_generic() -> None:
+    failure = classify_llm_invoke_failure(
+        RuntimeError("Azure OpenAI deployment 'prod-secret-name' was not found (404).")
+    )
+    assert failure is not None
+    assert failure.user_message == "The configured Azure OpenAI deployment was not found (404)."
+    assert "prod-secret-name" not in failure.user_message
+    assert "prod-secret-name" not in failure.tracker_message
+
+
 def test_classify_returns_none_for_credit_exhausted_so_it_propagates() -> None:
     """LLMCreditExhaustedError must propagate instead of becoming a degraded result."""
     from core.llm.shared.llm_retry import LLMCreditExhaustedError

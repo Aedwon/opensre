@@ -301,8 +301,7 @@ def classify_llm_invoke_failure(exc: BaseException) -> LLMInvokeFailure | None:
             )
         if "azure openai deployment" in err_msg or is_azure_openai_failure_message(raw):
             return LLMInvokeFailure(
-                user_message=raw.strip()
-                or "The configured Azure OpenAI deployment was not found (404).",
+                user_message="The configured Azure OpenAI deployment was not found (404).",
                 tracker_message="Failed: Azure deployment not found",
                 remediation_steps=azure_deployment_not_found_remediation_steps(),
             )
