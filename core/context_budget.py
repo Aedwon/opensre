@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 # models use a conservative default so we trim early rather than overflow.
 _MODEL_CONTEXT_WINDOWS: dict[str, int] = {
     "claude": 200_000,
+    "gemini": 1_000_000,
     "gpt-4o": 128_000,
     "gpt-4.1": 1_000_000,
     "gpt-4": 128_000,

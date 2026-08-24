@@ -40,6 +40,17 @@ class TestGpt56ContextWindow:
         assert context_budget_ceiling_for_model("gpt-5") == 112_000
 
 
+class TestGeminiContextWindow:
+    """Gemini 1.5+ ships a 1M-token window; unknown models used to pin 128k."""
+
+    def test_hosted_and_vertex_gemini_reclaim_the_million_token_window(self) -> None:
+        # 1_000_000 window - 16_000 response headroom.
+        ceiling = context_budget_ceiling_for_model("gemini-3.1-pro-preview")
+        assert ceiling == 984_000
+        assert context_budget_ceiling_for_model("gemini-2.5-pro") == ceiling
+        assert context_budget_ceiling_for_model("gemini-3-flash-preview") == ceiling
+
+
 def test_strip_internal_message_markers_removes_opensre_keys() -> None:
     messages = [
         {"role": "user", "content": "alert"},
