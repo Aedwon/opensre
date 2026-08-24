@@ -23,7 +23,10 @@ from typing import Any
 
 from rich.console import Console
 
-from config.constants.gateway import DEFAULT_STOP_TIMEOUT_SECONDS
+from config.constants.gateway import (
+    DEFAULT_STOP_TIMEOUT_SECONDS,
+    SCHEDULER_RELOAD_JOIN_TIMEOUT_SECONDS,
+)
 from core.agent_harness.ports import SlashPortsFactory
 from gateway import startup as gateway_startup
 from gateway.core.chat_agent_build import chat_agent_build_config
@@ -43,10 +46,6 @@ from infrastructure.turn_host.concurrency import (
 )
 from infrastructure.turn_host.turn_callback import TurnCallback
 from infrastructure.turn_host.turn_runner import TurnRunner
-
-# The reload watcher only polls a flag, so it should never need the full
-# shutdown budget; cap it so chat workers keep the rest.
-SCHEDULER_RELOAD_JOIN_TIMEOUT_SECONDS = 2.0
 
 CredentialHydratorFactory = Callable[[], GatewayCredentialHydrator | None]
 

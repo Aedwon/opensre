@@ -7,6 +7,8 @@ CREDITS_DENIED_MESSAGE = "Out of credits — top up in the OpenSRE console."
 DEFAULT_STOP_TIMEOUT_SECONDS = 8.0
 #: Web is a thread join, not a network drain, so it keeps a smaller slice.
 WEB_STOP_TIMEOUT_SECONDS = 5.0
+#: Reload watcher only polls a flag; cap the join so chat workers keep the rest.
+SCHEDULER_RELOAD_JOIN_TIMEOUT_SECONDS = 2.0
 DEFAULT_MAX_CONVERSATION_LOCKS = 1024
 NEW_SESSION_MESSAGE = "Started a new session."
 #: Inbound-decision reply sentinel: rotate the session instead of replying.
@@ -29,6 +31,7 @@ __all__ = [
     "DEFAULT_STOP_TIMEOUT_SECONDS",
     "NEW_SESSION_MESSAGE",
     "ROTATE_SESSION",
+    "SCHEDULER_RELOAD_JOIN_TIMEOUT_SECONDS",
     "NO_ACTIVE_TURN_MESSAGE",
     "TURN_ERROR_MESSAGE",
     "TURN_TIMEOUT_MESSAGE",
