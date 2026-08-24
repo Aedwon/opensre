@@ -38,6 +38,7 @@ from gateway.core.lifecycle.credential_hydration import (
 from gateway.core.lifecycle.errors import GatewayConfigurationError
 from gateway.core.process.component_status import clear_component_status, write_component_status
 from gateway.core.process.readiness import set_ready
+from gateway.core.process.shutdown_budget import ShutdownBudget
 from gateway.core.process.supervision import GATEWAY_PID_FILE
 from infrastructure.turn_host.concurrency import (
     TurnConcurrencyGate,
@@ -168,19 +169,22 @@ class GatewayController:
 
     def stop(self, *, timeout: float = DEFAULT_STOP_TIMEOUT_SECONDS) -> bool:
         """Shut down all components and return whether the chat workers stopped."""
+        budget = ShutdownBudget(timeout)
         set_ready(False)
         self._stopped.set()
         stopped = True
         if self._scheduler_reload_thread is not None:
+            started = budget.mark()
             self._scheduler_reload_thread.join(
-                timeout=min(timeout, SCHEDULER_RELOAD_JOIN_TIMEOUT_SECONDS)
+                timeout=budget.take(SCHEDULER_RELOAD_JOIN_TIMEOUT_SECONDS)
             )
+            budget.consume(started)
             self._scheduler_reload_thread = None
         if self.scheduler is not None:
             self.scheduler.shutdown(wait=False)
             self.scheduler = None
         if self.surfaces is not None:
-            stopped = self.surfaces.stop(timeout=timeout) and stopped
+            stopped = self.surfaces.stop(timeout=budget.remaining) and stopped
             self.surfaces = None
         clear_component_status()
         return stopped
