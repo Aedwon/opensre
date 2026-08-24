@@ -229,3 +229,24 @@ def test_sentry_summary_skill_loads_and_references_correct_tools() -> None:
     assert "priority_candidates" in result.skill.content
     # Registry truncates combined guidance at 2400 chars; keep the skill under that.
     assert len(formatted) <= 2400
+
+
+def test_load_tool_skill_guidance_honors_string_disable_model_invocation(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "SKILL.md"
+    _write_skill(
+        path,
+        """
+name: quiet-skill
+description: Should not be attached to the model.
+tools:
+  - some_tool
+disable-model-invocation: "true"
+""".strip(),
+    )
+
+    result = load_tool_skill_guidance(path, known_tool_names=frozenset({"some_tool"}))
+
+    assert result.skill is not None
+    assert result.skill.disable_model_invocation is True

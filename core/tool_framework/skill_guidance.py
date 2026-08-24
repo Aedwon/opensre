@@ -102,7 +102,7 @@ def load_tool_skill_guidance(
             content=parsed.body,
             file_path=str(path),
             tool_names=tool_names,
-            disable_model_invocation=frontmatter.get("disable-model-invocation") is True,
+            disable_model_invocation=_yaml_flag(frontmatter.get("disable-model-invocation")),
         ),
         diagnostics=diagnostics,
     )
@@ -257,6 +257,15 @@ def _tool_names(value: Any) -> tuple[str, ...]:
 
 def _string_value(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
+
+
+def _yaml_flag(value: Any) -> bool:
+    """Treat YAML booleans and the common string spellings as true."""
+    if value is True or value == 1:
+        return True
+    if isinstance(value, str):
+        return value.strip().lower() in {"true", "yes", "on", "1"}
+    return False
 
 
 def _diagnostic(code: SkillDiagnosticCode, message: str, path: Path) -> SkillDiagnostic:
