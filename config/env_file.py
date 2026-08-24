@@ -26,11 +26,11 @@ project env file; this owns writing it.
 from __future__ import annotations
 
 import os
-import re
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
+from config.env_assignment import env_assignment_key
 from config.env_key_sensitivity import is_sensitive_env_key
 from config.llm_auth.credentials import delete as delete_provider_auth
 from config.llm_auth.credentials import save_api_key
@@ -39,8 +39,6 @@ from config.llm_credentials import delete_keyring_secret, save_keyring_secret
 from config.local_env import get_project_env_path
 
 PROJECT_ENV_PATH = get_project_env_path()
-
-_ENV_ASSIGNMENT = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=")
 
 
 @dataclass(frozen=True)
@@ -58,12 +56,6 @@ class _PublicEnvLines:
     def write_to(self, target_path: Path) -> None:
         with target_path.open("w", encoding="utf-8", newline="") as env_file:
             env_file.writelines(self.lines)
-
-
-def env_assignment_key(line: str) -> str | None:
-    """Return the env key a ``.env`` line assigns, or ``None`` for non-assignments."""
-    match = _ENV_ASSIGNMENT.match(line)
-    return match.group(1) if match else None
 
 
 def strip_secret_env_lines(lines: list[str]) -> list[str]:
