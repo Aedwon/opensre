@@ -110,6 +110,8 @@ def set_env_value(lines: list[str], key: str, value: str) -> list[str]:
         raise ValueError(
             f"Refusing to write sensitive env key {key!r} to .env; use sync_env_secret()."
         )
+    if "\n" in value or "\r" in value:
+        raise ValueError(f"Refusing to write {key!r}: values must be a single line.")
     updated: list[str] = []
     replaced = False
     for line in lines:

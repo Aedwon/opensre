@@ -556,6 +556,13 @@ def test_set_env_value_rejects_sensitive_keys_with_value_error() -> None:
         set_env_value(["FOO=bar\n"], "GITLAB_ACCESS_TOKEN", "secret")
 
 
+def test_set_env_value_rejects_newline_injection() -> None:
+    from config.env_file import set_env_value
+
+    with pytest.raises(ValueError, match="single line"):
+        set_env_value(["FOO=bar\n"], "FOO", "ok\nTELEGRAM_BOT_TOKEN=leaked")
+
+
 def test_sync_env_secret_raises_when_keyring_unavailable(monkeypatch) -> None:
     monkeypatch.setattr(
         "config.env_file.save_keyring_secret",
