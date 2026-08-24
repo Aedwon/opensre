@@ -143,7 +143,13 @@ def _parse_frontmatter(content: str, path: Path) -> _ParsedFrontmatter:
 
     end_index = normalized.find("\n---", 3)
     if end_index == -1:
-        return _ParsedFrontmatter(frontmatter={}, body=normalized.strip())
+        return _ParsedFrontmatter(
+            frontmatter={},
+            body="",
+            diagnostics=[
+                _diagnostic("parse_failed", "frontmatter is not closed with ---", path),
+            ],
+        )
 
     yaml_content = normalized[4:end_index]
     body = normalized[end_index + 4 :].strip()

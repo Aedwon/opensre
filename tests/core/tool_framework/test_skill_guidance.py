@@ -52,6 +52,16 @@ def test_load_tool_skill_guidance_skips_missing_file(tmp_path: Path) -> None:
     assert result.diagnostics == []
 
 
+def test_load_tool_skill_guidance_reports_unclosed_frontmatter(tmp_path: Path) -> None:
+    path = tmp_path / "SKILL.md"
+    path.write_text("---\nname: unclosed-skill\ndescription: leaked yaml\n", encoding="utf-8")
+
+    result = load_tool_skill_guidance(path)
+
+    assert result.skill is None
+    assert [diagnostic.code for diagnostic in result.diagnostics] == ["parse_failed"]
+
+
 def test_load_tool_skill_guidance_reports_invalid_yaml(tmp_path: Path) -> None:
     path = tmp_path / "SKILL.md"
     path.write_text("---\nname: [unterminated\n---\nBody\n", encoding="utf-8")
