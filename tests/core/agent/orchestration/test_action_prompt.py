@@ -98,12 +98,14 @@ def test_system_prompt_base_is_markdown_backed_opensre_prompt() -> None:
     """Stable base is ``opensre_system_prompt.md`` (core agent prompt, not per-model)."""
     prompt = _SYSTEM_PROMPT_BASE
     assert prompt.startswith("You are OpenSRE, a terminal-based SRE and coding assistant")
+    assert "Goal-oriented planning (highest priority)" in prompt
+    assert "Every tool call must advance that goal" in prompt
     assert "AGENTS.md spec" in prompt
     assert "apply_patch" in prompt
-    assert "update_plan" in prompt
     assert "Autonomy and Persistence" in prompt
     assert "GPT-5.2" not in prompt
     assert "Codex CLI" not in prompt
+    assert "update_plan" not in prompt
 
 
 def test_system_prompt_slack_fragment_documents_roster_followup() -> None:

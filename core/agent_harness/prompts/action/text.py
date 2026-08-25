@@ -14,6 +14,7 @@ from pathlib import Path
 from core.agent_harness.prompts.action.multi_step_policy import (
     ACTION_CONVERSATIONAL_SESSION_GOAL_RULE,
     ACTION_LOCAL_SHELL_MULTI_STEP_RULE,
+    ACTION_PRIOR_INVESTIGATION_FOLLOW_UP_RULE,
 )
 
 # When the planner should offer scheduling, given CONTEXT setup_state.
@@ -43,6 +44,7 @@ _SYSTEM_PROMPT_BASE = _load_system_prompt_base()
 __all__ = (
     "ACTION_CONVERSATIONAL_SESSION_GOAL_RULE",
     "ACTION_LOCAL_SHELL_MULTI_STEP_RULE",
+    "ACTION_PRIOR_INVESTIGATION_FOLLOW_UP_RULE",
     "ACTION_SETUP_CAPACITY_SCHEDULE_RULE",
     "_PROMPT_FILENAME",
     "_SYSTEM_PROMPT_BASE",
