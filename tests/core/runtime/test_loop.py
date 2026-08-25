@@ -572,30 +572,6 @@ def test_agent_tool_context_update_emits_tool_execution_update() -> None:
     assert updates[0].partial_result == {"status": "halfway"}
 
 
-def test_rejecting_conclusion_without_nudge_raises() -> None:
-    class RejectingAgent(Agent[RegisteredTool]):
-        def _should_accept_conclusion(
-            self,
-            *,
-            evidence_count: int,  # noqa: ARG002
-            iteration: int,  # noqa: ARG002
-            final_text: str = "",  # noqa: ARG002
-        ) -> tuple[bool, str | None]:
-            return False, None
-
-    llm = FakeLLM(iter([_text_response("not enough")]))
-    agent = RejectingAgent(
-        llm=llm,
-        system="sys",
-        tools=_tools(FakeTool("query_logs")),
-        resolved_integrations={},
-        max_iterations=3,
-    )
-
-    with pytest.raises(ValueError, match="_should_accept_conclusion returned"):
-        agent.run([{"role": "user", "content": "hello"}])
-
-
 def test_tool_filtering_runs_after_subclass_initialization() -> None:
     class LateStateFilteringAgent(Agent[RegisteredTool]):
         def __init__(self, **kwargs: Any) -> None:

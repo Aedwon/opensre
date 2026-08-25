@@ -37,9 +37,8 @@ class Agent[RuntimeToolT: RuntimeTool](EventEmitterMixin, ToolFilterMixin, Steer
     """Stateful, configurable ReAct agent — the tool-calling agent shape.
 
     Wires per-run context into ``run_react_loop`` and exposes hook methods so
-    subclasses can customise stopping logic and tool filtering without
-    re-implementing the loop. For the direct-answer shape (no tools), see
-    ``core/agent_harness/AGENTS.md``.
+    subclasses can customise tool filtering without re-implementing the loop.
+    For the direct-answer shape (no tools), see ``core/agent_harness/AGENTS.md``.
     """
 
     def __init__(

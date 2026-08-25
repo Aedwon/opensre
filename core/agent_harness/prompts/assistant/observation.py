@@ -13,6 +13,14 @@ HANDOFF_GUIDANCE: dict[str, str] = {
         "- Do NOT suggest `/integrations setup llama`, `/remote`, or claim you "
         "switched providers.\n\n"
     ),
+    "chat:capabilities": (
+        "The user asked what you can do. Follow the skill-demo rule in the "
+        "system prompt: offer only those copy-pasteable skill prompts. Do not "
+        "list platform features, slash commands, AGENTS.md capabilities, or a "
+        "generic coding-agent menu. Do not close with a fifth Want-me-to that "
+        "invents another action (no open-PR check, no /health, no "
+        "/investigate).\n\n"
+    ),
     "follow_up:prior_investigation": (
         "The action planner handed off a retrospective question about the "
         "investigation already completed in this session. Answer it from the "

@@ -21,6 +21,7 @@ from core.agent_harness.prompts.rules import (
     CLI_ASSISTANT_MARKDOWN_RULE,
     INTERACTIVE_SHELL_TERMINOLOGY_RULE,
 )
+from core.agent_harness.prompts.skills.loader import load_skills_demo_block
 from core.agent_harness.prompts.system_prompt import OPENSRE_SYSTEM_PROMPT
 from infrastructure.harness_providers import (
     assistant_prompt_vendor_fragments,
@@ -134,6 +135,24 @@ def contribute_gateway_persona(
             kind=PromptBlockKind.RULE,
             tier=PromptTier.STABLE,
             provenance="infrastructure.harness_providers.gateway_persona_fragments",
+        )
+    ]
+
+
+def contribute_skills_demos(
+    parts: AssistantPromptParts, profile: SurfaceProfile
+) -> list[PromptBlock]:
+    _ = parts, profile
+    demos = load_skills_demo_block()
+    if not demos:
+        return []
+    return [
+        _block(
+            "assistant-skills-demos",
+            f"{demos}\n\n",
+            kind=PromptBlockKind.RULE,
+            tier=PromptTier.STABLE,
+            provenance="core.agent_harness.prompts.skills",
         )
     ]
 
@@ -341,6 +360,7 @@ ASSISTANT_BLOCK_CONTRIBUTORS: tuple[Contributor, ...] = (
     contribute_preamble,
     contribute_vendor_fragments,
     contribute_cli_response_shape,
+    contribute_skills_demos,
     contribute_gateway_persona,
     contribute_cli_terminology,
     contribute_markdown_rule,

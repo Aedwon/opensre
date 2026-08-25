@@ -59,7 +59,8 @@ assistant_handoff_tool = RegisteredTool(
         "Use for informational, conversational, ambiguous, or non-actionable requests, "
         "including a bare pasted alert JSON/YAML/key-value blob or bare incident statement "
         "when the user did not explicitly ask to investigate, analyze, diagnose, RCA, or "
-        "root-cause it. For stream-only docs/how-to/greeting chat set requires_gather=false; "
+        "root-cause it. For stream-only docs/how-to/greeting/capabilities chat set "
+        "requires_gather=false; "
         "for metric/count asks set evidence_kind=metric_read (leave requires_gather true); "
         "for multi-step continuation set session_goal (and optional session_goal_items)."
     ),
@@ -70,6 +71,7 @@ assistant_handoff_tool = RegisteredTool(
                     "Concise assistant handoff text for informational, ambiguous, "
                     "or non-executable requests. Prefer structured tags when the "
                     "topic is known — e.g. docs:datadog_setup, chat:greeting, "
+                    "chat:capabilities for what-can-you-do questions, "
                     "provider:local_llama_connect for vague local-model setup. "
                     "Do not bury evidence_kind / session_goal in prose when the "
                     "dedicated fields below apply — set those fields instead."
