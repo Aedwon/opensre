@@ -95,17 +95,16 @@ def test_prior_action_facts_block_surfaces_telegram_followup_values() -> None:
 
 
 def test_system_prompt_base_is_markdown_backed_opensre_prompt() -> None:
-    """Stable base is ``opensre_system_prompt.md`` (core agent prompt, not per-model)."""
+    """Stable base is ``opensre_system_prompt.md`` — the action planner, not a coding agent."""
     prompt = _SYSTEM_PROMPT_BASE
-    assert prompt.startswith("You are OpenSRE, a terminal-based SRE and coding assistant")
-    assert "Goal-oriented planning (highest priority)" in prompt
-    assert "Every tool call must advance that goal" in prompt
-    assert "AGENTS.md spec" in prompt
-    assert "apply_patch" in prompt
-    assert "Autonomy and Persistence" in prompt
+    assert prompt.startswith("You plan actions for the OpenSRE interactive shell.")
+    assert "COMPOUND TURN RULE" in prompt
+    assert "GOAL PERSISTENCE" in prompt
+    assert "senior production engineer mapping intent to tools" in prompt
     assert "GPT-5.2" not in prompt
     assert "Codex CLI" not in prompt
     assert "update_plan" not in prompt
+    assert "apply_patch" not in prompt
 
 
 def test_system_prompt_slack_fragment_documents_roster_followup() -> None:
@@ -355,20 +354,20 @@ def test_action_system_prompt_includes_skills_block() -> None:
     assert SKILLS_HEADER in prompt
     assert "morning-report" in prompt
     assert "MORNING REPORT SKILL" not in prompt
-    # Skills sit after the markdown base so the OpenSRE identity is set first.
-    assert prompt.index(
-        "You are OpenSRE, a terminal-based SRE and coding assistant"
-    ) < prompt.index(SKILLS_HEADER)
+    # Skills sit after the markdown base so the action-planner identity is set first.
+    assert prompt.index("You plan actions for the OpenSRE interactive shell.") < prompt.index(
+        SKILLS_HEADER
+    )
     # ...and before the per-turn context blocks that follow.
     assert prompt.index(SKILLS_HEADER) < prompt.index(
         "CONNECTED INTEGRATIONS (this install, right now):"
     )
 
 
-def test_morning_report_skill_still_documents_local_llama_is_not_in_base() -> None:
-    """Local-llama routing lived in the old inline base; skills/vendors still own domain rules."""
-    assert "provider:local_llama_connect" not in _SYSTEM_PROMPT_BASE
-    assert "You are OpenSRE, a terminal-based SRE and coding assistant" in _SYSTEM_PROMPT_BASE
+def test_morning_report_skill_still_documents_local_llama_in_base() -> None:
+    """Vague local-llama requests map to provider:local_llama_connect in the planner base."""
+    assert "provider:local_llama_connect" in _SYSTEM_PROMPT_BASE
+    assert _SYSTEM_PROMPT_BASE.startswith("You plan actions for the OpenSRE interactive shell.")
 
 
 class _FakePrompts:
@@ -463,15 +462,15 @@ def test_database_query_handoff_guidance_block_matches_prefix() -> None:
 def test_database_query_handoff_guidance_still_documents_mysql_routing() -> None:
     """Oracle 332: database_query tags inject connect/query guidance (assistant path).
 
-    The markdown action base no longer inlines OpenSRE database_query routing;
-    handoff guidance remains the contract for that tag.
+    Handoff guidance remains the contract for that tag; the action base also
+    documents database_query handoff routing for the planner.
     """
     block = build_handoff_guidance_block(("database_query:mysql_active_connections",))
     assert "database" in block.lower()
     assert "/mcp connect" in block
     assert "investigation" in block.lower()
-    assert "provider:local_llama_connect" not in _SYSTEM_PROMPT_BASE
-    assert "You are OpenSRE, a terminal-based SRE and coding assistant" in _SYSTEM_PROMPT_BASE
+    assert "database_query:" in _SYSTEM_PROMPT_BASE
+    assert _SYSTEM_PROMPT_BASE.startswith("You plan actions for the OpenSRE interactive shell.")
 
 
 def test_incident_description_handoff_guidance_keeps_user_symptoms() -> None:
@@ -618,7 +617,7 @@ def test_scheduling_guidance_survives_prompt_assembly() -> None:
     assert "recurring: weekdays 08:00" in assembled
     assert "skill_view" in assembled
     assert "propose_scheduled_delivery" in body
-    assert "you are opensre, a terminal-based sre and coding assistant" in assembled
+    assert "you plan actions for the opensre interactive shell" in assembled
     assert "propose_scheduled_delivery(" not in assembled
 
 

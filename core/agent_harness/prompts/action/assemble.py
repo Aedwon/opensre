@@ -7,13 +7,7 @@ import re
 from typing import TYPE_CHECKING
 
 from core.agent_harness.prompts.action.routing_policy import ACTION_ROUTING_POLICY
-from core.agent_harness.prompts.action.text import (
-    _SYSTEM_PROMPT_BASE,
-    ACTION_CONVERSATIONAL_SESSION_GOAL_RULE,
-    ACTION_LOCAL_SHELL_MULTI_STEP_RULE,
-    ACTION_PRIOR_INVESTIGATION_FOLLOW_UP_RULE,
-    ACTION_SETUP_CAPACITY_SCHEDULE_RULE,
-)
+from core.agent_harness.prompts.action.text import _SYSTEM_PROMPT_BASE
 from core.agent_harness.prompts.kernel.envelope import (
     PromptBlock,
     PromptBlockId,
@@ -86,19 +80,6 @@ def _optional_block(
     ]
 
 
-def _action_goal_policy_block() -> str:
-    """OpenSRE goal contracts appended after the markdown base (STABLE)."""
-    return "\n".join(
-        (
-            ACTION_SETUP_CAPACITY_SCHEDULE_RULE.rstrip(),
-            ACTION_LOCAL_SHELL_MULTI_STEP_RULE.rstrip(),
-            ACTION_CONVERSATIONAL_SESSION_GOAL_RULE.rstrip(),
-            ACTION_PRIOR_INVESTIGATION_FOLLOW_UP_RULE.rstrip(),
-            "",
-        )
-    )
-
-
 def build_action_system_prompt_envelope(turn_snapshot: TurnSnapshot) -> PromptEnvelope:
     blocks = [
         PromptBlock(
@@ -109,13 +90,6 @@ def build_action_system_prompt_envelope(turn_snapshot: TurnSnapshot) -> PromptEn
             # copies the entire stable prompt body on every turn.
             content="".join((_SYSTEM_PROMPT_BASE, "\n\n")),
             provenance="core.agent_harness.prompts.action.opensre_system_prompt.md",
-        ),
-        PromptBlock(
-            id=PromptBlockId.ACTION_GOAL_POLICY,
-            kind=PromptBlockKind.RULE,
-            tier=PromptTier.STABLE,
-            content=_action_goal_policy_block(),
-            provenance="core.agent_harness.prompts.action.multi_step_policy",
         ),
         PromptBlock(
             id=PromptBlockId.ACTION_ROUTING_POLICY,

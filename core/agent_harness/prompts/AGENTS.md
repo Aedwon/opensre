@@ -33,4 +33,4 @@ kernel  ←  memory, runtime_facts, skills, rules, grounding
 ## Provenance
 
 `PromptBlock.provenance` should name the owning module under this tree
-(e.g. `core.agent_harness.prompts.action.text`).
+(e.g. `core.agent_harness.prompts.action.opensre_system_prompt.md`).
