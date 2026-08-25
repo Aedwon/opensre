@@ -94,13 +94,13 @@ def test_action_capacity_rule_ties_facts_to_propose_not_skip() -> None:
 def test_action_system_prompt_requires_goal_oriented_tool_calls() -> None:
     _mentions(
         _SYSTEM_PROMPT_BASE,
-        "advance the user's stated goal",
-        "no sightseeing",
-        "genuinely blocked",
+        "Persist until the task is fully handled",
+        "keep going until the query or task is completely resolved",
+        "Do NOT guess or make up an answer",
     )
 
 
-def test_action_capacity_rule_is_wired_into_stable_system_prompt() -> None:
+def test_action_capacity_rule_is_exported_and_setup_state_stays_context() -> None:
     # Arrange / Act
     envelope = build_action_system_prompt_envelope(
         TurnSnapshot(
@@ -120,15 +120,17 @@ def test_action_capacity_rule_is_wired_into_stable_system_prompt() -> None:
         )
     )
 
-    # Assert
-    assert ACTION_SETUP_CAPACITY_SCHEDULE_RULE in _SYSTEM_PROMPT_BASE
-    assert ACTION_SETUP_CAPACITY_SCHEDULE_RULE in envelope.render_cached()
-    stable = "".join(b.content for b in envelope.blocks if b.tier is PromptTier.STABLE)
-    assert "propose_scheduled_delivery" in stable
-    # Facts stay CONTEXT; guidance stays STABLE.
+    # Assert: capacity rule remains a named fragment for skills/tests; the
+    # markdown base prompt no longer inlines OpenSRE schedule routing.
+    assert ACTION_SETUP_CAPACITY_SCHEDULE_RULE
+    assert "propose_scheduled_delivery" in ACTION_SETUP_CAPACITY_SCHEDULE_RULE
+    # Facts stay CONTEXT; markdown base stays STABLE and does not embed the rule.
     context = "".join(b.content for b in envelope.blocks if b.tier is PromptTier.CONTEXT)
     assert "Scheduled tasks: 0 configured, 0 able to deliver" in context
     assert ACTION_SETUP_CAPACITY_SCHEDULE_RULE not in context
+    assert ACTION_SETUP_CAPACITY_SCHEDULE_RULE not in _SYSTEM_PROMPT_BASE
+    stable = "".join(b.content for b in envelope.blocks if b.tier is PromptTier.STABLE)
+    assert "You are OpenSRE, a terminal-based SRE and coding assistant" in stable
 
 
 def test_goal_contract_does_not_belong_in_setup_state_facts() -> None:

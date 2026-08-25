@@ -71,10 +71,11 @@ def test_multi_step_prompt_fragments_are_both_present_and_distinct() -> None:
     assert "NOT\nshell_run" in ACTION_CONVERSATIONAL_SESSION_GOAL_RULE or (
         "NOT shell_run" in ACTION_CONVERSATIONAL_SESSION_GOAL_RULE.replace("\n", " ")
     )
-    # Assembled prompt includes both contracts in order.
-    shell_at = _SYSTEM_PROMPT_BASE.index("LOCAL SEQUENTIAL STEPS")
-    goal_at = _SYSTEM_PROMPT_BASE.index("Conversational keep-going checklists")
-    assert shell_at < goal_at
+    # Fragments remain separate contracts (not collapsed); the markdown base
+    # prompt no longer inlines them.
+    assert ACTION_LOCAL_SHELL_MULTI_STEP_RULE not in _SYSTEM_PROMPT_BASE
+    assert ACTION_CONVERSATIONAL_SESSION_GOAL_RULE not in _SYSTEM_PROMPT_BASE
+    assert "You are OpenSRE, a terminal-based SRE and coding assistant" in _SYSTEM_PROMPT_BASE
 
 
 def test_seam_modules_exist() -> None:
