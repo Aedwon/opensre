@@ -308,8 +308,8 @@ def test_select_cases_complex_picks_the_top_scored() -> None:
 
 def test_select_cases_percentage_rounds_up() -> None:
     cases = load_all_scenarios()
-    # 5% of 61 scenarios rounds up to 4.
-    assert len(select_cases(cases, spec="complex:5%")) == 4
+    # 5% of 59 scenarios rounds up to 3.
+    assert len(select_cases(cases, spec="complex:5%")) == 3
 
 
 def test_select_representative_covers_every_behavior_class() -> None:

@@ -58,8 +58,6 @@ def test_prompt_envelope_renders_ordered_blocks_with_optional_titles() -> None:
 def test_action_system_prompt_envelope_matches_legacy_rendering(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Session-goal fragments live inside the markdown base. Routing contracts
-    # stay a dedicated STABLE block so a markdown-only rewrite cannot drop them.
     from config.constants import OPENSRE_MEMORY_DISABLED_ENV
 
     monkeypatch.setenv(OPENSRE_MEMORY_DISABLED_ENV, "1")
@@ -73,7 +71,6 @@ def test_action_system_prompt_envelope_matches_legacy_rendering(
     # this id list) when no fragments are registered.
     assert [block.id for block in envelope.blocks] == [
         PromptBlockId.ACTION_SYSTEM_BASE,
-        PromptBlockId.ACTION_ROUTING_POLICY,
         PromptBlockId.ACTION_VENDOR_FRAGMENTS,
         PromptBlockId.ACTION_RUNTIME_FACTS,
         PromptBlockId.ACTION_SKILLS,
@@ -97,7 +94,6 @@ def test_action_system_prompt_envelope_matches_legacy_rendering(
         == PromptBlockKind.CONVERSATION
     )
     assert envelope.render() == build_action_system_prompt(ctx)
-    assert envelope.require_block(PromptBlockId.ACTION_ROUTING_POLICY).kind == PromptBlockKind.RULE
 
 
 def _turn(messages: list[tuple[str, str]]) -> TurnSnapshot:
@@ -184,11 +180,9 @@ def test_every_block_declares_which_tier_it_belongs_to(
     # Act
     tiers = {block.id: block.tier for block in envelope.blocks}
 
-    # Assert — session-goal fragments live in ACTION_SYSTEM_BASE (markdown);
-    # ACTION_ROUTING_POLICY is a dedicated STABLE block.
+    # Assert
     assert tiers == {
         PromptBlockId.ACTION_SYSTEM_BASE: PromptTier.STABLE,
-        PromptBlockId.ACTION_ROUTING_POLICY: PromptTier.STABLE,
         PromptBlockId.ACTION_VENDOR_FRAGMENTS: PromptTier.STABLE,
         PromptBlockId.ACTION_RUNTIME_FACTS: PromptTier.STABLE,
         PromptBlockId.ACTION_SKILLS: PromptTier.STABLE,
