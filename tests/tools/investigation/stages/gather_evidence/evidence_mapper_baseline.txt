@@ -155,8 +155,6 @@ list_yc_log_groups
 list_yc_metrics
 memory_recall
 memory_remember
-opsgenie_alert_detail
-opsgenie_alerts
 pi_coding_task
 query_azure_monitor_logs
 query_datadog_all
