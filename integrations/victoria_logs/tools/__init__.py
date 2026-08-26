@@ -16,12 +16,33 @@ permanently non-functional from the executor path. See
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
+from core.domain.types.evidence import EvidenceMapper, record_evidence_entry
 from core.domain.types.tools import ToolSurface
 from core.tool import BaseTool
 from core.tool_framework.utils import tool_unavailable
 from integrations.victoria_logs.client import make_victoria_logs_client
+
+
+def _map_victoria_logs_query(
+    evidence: dict[str, Any], output: dict[str, Any], tool_input: dict[str, Any]
+) -> None:
+    """Lift a VictoriaLogs query result into citeable report evidence."""
+    rows = output.get("rows", [])
+    if not isinstance(rows, list) or not rows:
+        return
+
+    query = output.get("query") or tool_input.get("query")
+    query_text = str(query).strip() if query else ""
+    row_label = "log entry" if len(rows) == 1 else "log entries"
+    record_evidence_entry(
+        evidence,
+        source="victoria_logs_query",
+        label="VictoriaLogs Logs",
+        summary=f"{len(rows)} {row_label}",
+        snippet=query_text[:200] or None,
+    )
 
 
 class VictoriaLogsTool(BaseTool):
@@ -29,6 +50,7 @@ class VictoriaLogsTool(BaseTool):
 
     name = "victoria_logs_query"
     source = "victoria_logs"
+    evidence_mapper: ClassVar[EvidenceMapper | None] = _map_victoria_logs_query
     description = (
         "Query structured logs from VictoriaLogs using LogsQL to investigate "
         "application errors, request anomalies, or other log-correlated signals."
