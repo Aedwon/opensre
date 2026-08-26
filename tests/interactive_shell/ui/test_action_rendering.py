@@ -41,9 +41,11 @@ def test_slash_invoke_tool_start_does_not_record_cli_agent() -> None:
         {"name": "slash_invoke", "input": {"command": "/model", "args": ["show"]}},
     )
 
+    # slash_invoke is self-recording, so no cli_agent history row is written,
+    # but the live tool-call preview still shows what is running.
     assert session.history == []
     assert observer.planned_count == 1
-    assert buffer.getvalue() == ""
+    assert "/model show" in buffer.getvalue()
 
 
 def test_shell_run_tool_start_does_not_record_cli_agent() -> None:
@@ -281,12 +283,14 @@ def test_non_skill_tool_end_prints_nothing() -> None:
     observer, buffer = _skill_observer()
 
     observer("tool_start", {"id": "t1", "name": "shell_run", "input": {"command": "true"}})
+    after_start = buffer.getvalue()
     observer(
         "tool_end",
         {"id": "t1", "name": "shell_run", "input": {"command": "true"}, "output": {"ok": True}},
     )
 
-    assert buffer.getvalue() == ""
+    # tool_end adds a child line only for skill_view; a non-skill tool_end is silent.
+    assert buffer.getvalue() == after_start
 
 
 def test_literal_slash_command_records_single_history_entry(
@@ -356,3 +360,23 @@ def test_chat_turn_records_single_cli_agent_history_entry() -> None:
     # The turn's history recording must not advance the prompt number; only the
     # submission itself does.
     assert _prompt_turn_number(session) == 2
+
+
+def test_set_spinner_phase_does_not_activate_a_suppressed_spinner() -> None:
+    """A suppressed (never-started) spinner must not be activated by the observer.
+
+    Literal slash turns skip spinner start()/stop(); activating it on
+    llm_start / tool_start would leave the spinner on screen after the command.
+    """
+    from surfaces.interactive_shell.runtime.core.state import SpinnerState
+    from surfaces.shared.terminal.output.console_state import set_investigation_spinner
+
+    observer, _buffer = _observer_with_buffer()
+    spinner = SpinnerState()  # not started -> streaming False (suppressed)
+    set_investigation_spinner(spinner)
+    try:
+        observer("llm_start", {"iteration": 0})
+        observer("tool_start", {"name": "slash_invoke", "input": {"command": "/model"}})
+        assert spinner.streaming is False
+    finally:
+        set_investigation_spinner(None)
