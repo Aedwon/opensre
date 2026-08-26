@@ -20,12 +20,18 @@ from rich.console import Console
 from rich.text import Text
 
 from core.agent_harness.spi.accounting import SELF_RECORDING_ACTION_TOOL_NAMES
+from core.agent_harness.spi.task_plan import TaskPlan, is_plan_diagnosis_prose
 from infrastructure.safety.terminal_output import strip_terminal_controls
 from infrastructure.terminal.theme import BOLD_SKILL, BRAND, DIM, HIGHLIGHT
 from surfaces.interactive_shell.runtime import Session
 from surfaces.interactive_shell.runtime.core.state import SpinnerState
 from surfaces.interactive_shell.ui.streaming import render_markdown_block
+from surfaces.interactive_shell.ui.task_plan import (
+    render_plan_updated,
+    render_task_plan,
+)
 from surfaces.shared.terminal.output.console_state import get_investigation_spinner
+from tools.interactive_shell.action_names import ActionToolName
 
 # Tools whose preview is just ``(label, single-arg)``. The display content is the
 # stripped string value of that single argument. Anything that needs to combine
@@ -35,19 +41,19 @@ from surfaces.shared.terminal.output.console_state import get_investigation_spin
 _VERB_ROTATION_STEP_INTERVAL = 2
 
 _SIMPLE_TOOL_LABELS: dict[str, tuple[str, str]] = {
-    "llm_set_provider": ("LLM provider", "target"),
-    "alert_sample": ("sample alert", "template"),
-    "investigation_start": ("investigation", "alert_text"),
-    "task_cancel": ("cancel task", "target"),
-    "cli_exec": ("opensre", "payload"),
-    "code_implement": ("implementation", "task"),
-    "shell_run": ("Execute", "command"),
+    ActionToolName.LLM_SET_PROVIDER: ("LLM provider", "target"),
+    ActionToolName.ALERT_SAMPLE: ("sample alert", "template"),
+    ActionToolName.INVESTIGATION_START: ("investigation", "alert_text"),
+    ActionToolName.TASK_CANCEL: ("cancel task", "target"),
+    ActionToolName.CLI_EXEC: ("opensre", "payload"),
+    ActionToolName.CODE_IMPLEMENT: ("implementation", "task"),
+    ActionToolName.SHELL_RUN: ("Execute", "command"),
 }
 
 #: Tools that render their own dedicated UI (the investigation lap/spinner
 #: progress). The generic live tool-call preview is suppressed for these so it
 #: does not duplicate that UI as a wall of text.
-_SELF_RENDERING_TOOLS: frozenset[str] = frozenset({"investigation_start"})
+_SELF_RENDERING_TOOLS: frozenset[str] = frozenset({ActionToolName.INVESTIGATION_START})
 
 
 def tool_call_display(tool_name: str, args: dict[str, Any]) -> tuple[str, str]:
@@ -56,12 +62,12 @@ def tool_call_display(tool_name: str, args: dict[str, Any]) -> tuple[str, str]:
     Both strings are stripped of terminal controls: callers append them to a
     raw Rich line, and the tool name and args are model-supplied.
     """
-    if tool_name == "slash_invoke":
+    if tool_name == ActionToolName.SLASH_INVOKE:
         command = str(args.get("command", "")).strip()
         raw_args = args.get("args")
         parsed_args = [str(item).strip() for item in raw_args] if isinstance(raw_args, list) else []
         label, content = "command", " ".join([command, *parsed_args]).strip()
-    elif tool_name == "synthetic_run":
+    elif tool_name == ActionToolName.SYNTHETIC_RUN:
         suite = str(args.get("suite", "")).strip()
         scenario = str(args.get("scenario", "")).strip()
         label, content = "synthetic test", f"{suite}:{scenario}" if scenario else suite
@@ -90,6 +96,8 @@ class ActionRenderObserver:
         self.message = message
         self.planned_count = 0
         self._pending_skill_calls: dict[str, str] = {}
+        # (explanation, ((step, status), ...)) — explanation changes must refresh.
+        self._last_plan_signature: tuple[str, tuple[tuple[str, str], ...]] | None = None
 
     def __call__(self, kind: str, data: dict[str, Any]) -> None:
         if kind == "llm_start":
@@ -109,8 +117,13 @@ class ActionRenderObserver:
                 )
             return
         if kind == "tool_end":
-            if str(data.get("name", "")).strip() == "skill_view":
+            name = str(data.get("name", "")).strip()
+            if name == ActionToolName.SKILL_VIEW:
                 self._render_skill_end(data)
+            elif name == ActionToolName.UPDATE_PLAN:
+                # Commit lives in the tool; paint only after a successful result
+                # so a rejected call cannot leave session/overlay on a failed plan.
+                self._render_plan_update(data)
             self._set_spinner_phase(SpinnerState.EXECUTING_PHASE)
             return
         if kind != "tool_start":
@@ -119,8 +132,10 @@ class ActionRenderObserver:
         if not name:
             return
         self._set_spinner_phase(SpinnerState.INVOKING_TOOLS_PHASE)
-        if name == "skill_view":
+        if name == ActionToolName.SKILL_VIEW:
             self._render_skill_start(data)
+        elif name == ActionToolName.UPDATE_PLAN:
+            pass  # render on tool_end after the tool commits session state
         elif name in _SELF_RENDERING_TOOLS:
             pass  # owns its UI; a generic preview would duplicate it
         else:
@@ -166,6 +181,8 @@ class ActionRenderObserver:
         content = str(data.get("content", "")).strip()
         if not content:
             return
+        if is_plan_diagnosis_prose(content):
+            return
         self.console.print()
         # ``render_markdown_block`` sanitizes model text at ``_build_markdown_block``.
         render_markdown_block(self.console, content)
@@ -194,6 +211,34 @@ class ActionRenderObserver:
             line.append(f" {content}", style=str(BRAND))
         self.console.print()
         self.console.print(line)
+
+    def _render_plan_update(self, data: dict[str, Any]) -> None:
+        """Paint the checklist after a successful ``update_plan`` tool result.
+
+        Session state is written by the tool itself — this observer must not
+        commit on ``tool_start``, or a later validation/hook failure would leave
+        the overlay and flush transcript advertising a plan that never landed.
+        """
+        output = data.get("output")
+        if not isinstance(output, dict) or not output.get("ok"):
+            return
+        plan = getattr(self.session, "task_plan", None)
+        if not isinstance(plan, TaskPlan) or not plan.steps:
+            return
+        signature = (
+            plan.explanation,
+            tuple((item.step, str(item.status)) for item in plan.steps),
+        )
+        if signature == self._last_plan_signature:
+            return
+        self._last_plan_signature = signature
+        if plan.all_pending:
+            render_task_plan(self.console, plan)
+            return
+        render_plan_updated(self.console, plan)
+        explanation = strip_terminal_controls(plan.explanation)
+        if explanation:
+            render_markdown_block(self.console, explanation)
 
     def _render_skill_end(self, data: dict[str, Any]) -> None:
         """Print the ``↳`` child line under the skill's ``tool_start`` parent."""
