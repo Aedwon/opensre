@@ -159,7 +159,6 @@ opsgenie_alert_detail
 opsgenie_alerts
 pi_coding_task
 query_azure_monitor_logs
-query_coralogix_logs
 query_datadog_all
 query_datadog_events
 query_datadog_logs
