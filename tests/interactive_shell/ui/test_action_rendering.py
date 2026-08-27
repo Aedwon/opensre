@@ -48,6 +48,36 @@ def test_slash_invoke_tool_start_does_not_record_cli_agent() -> None:
     assert "/model show" in buffer.getvalue()
 
 
+def test_internal_choose_slash_has_no_tool_preview() -> None:
+    session = Session()
+    buffer = io.StringIO()
+    console = Console(file=buffer, force_terminal=False, highlight=False)
+    observer = ActionRenderObserver(session=session, console=console, message="/choose")
+
+    observer(
+        "tool_start",
+        {"name": "slash_invoke", "input": {"command": "/choose", "args": []}},
+    )
+
+    assert observer.planned_count == 1
+    assert buffer.getvalue() == ""
+
+
+def test_ask_user_choice_has_no_generic_tool_preview() -> None:
+    observer, buffer = _observer_with_buffer("ask me to choose")
+
+    observer(
+        "tool_start",
+        {
+            "name": "ask_user_choice",
+            "input": {"title": "Deploy how?", "options": ["Canary", "Rolling"]},
+        },
+    )
+
+    assert observer.planned_count == 1
+    assert buffer.getvalue() == ""
+
+
 def test_shell_run_tool_start_does_not_record_cli_agent() -> None:
     session = Session()
     console = Console(file=io.StringIO(), force_terminal=False, highlight=False)
@@ -170,6 +200,111 @@ def test_tool_call_display_strips_terminal_controls_from_model_args() -> None:
     assert "\x1b" not in content
     assert "\x07" not in content
     assert content == "ls[2Krm"
+
+
+def test_github_cli_tool_call_display_uses_sdk_arguments_without_runtime_details() -> None:
+    label, content = tool_call_display(
+        "github_cli",
+        {
+            "args": [
+                "search",
+                "prs",
+                "-H",
+                "Authorization: Bearer should-not-render",
+                "--repo",
+                "react/react",
+                "--merged",
+                "--merged-at",
+                "2026-08-01..2026-08-26",
+                "--jq",
+                ".[] | [.createdAt, .closedAt] | @tsv",
+            ],
+            "repo": "facebook/react",
+            "timeout": 120,
+        },
+    )
+
+    assert label == "GitHub CLI"
+    assert content.startswith("gh -R facebook/react search prs")
+    assert "-H …" in content
+    assert "should-not-render" not in content
+    assert "--repo react/react" in content
+    assert "--merged-at 2026-08-01..2026-08-26" in content
+    assert "--jq …" in content
+    assert ".createdAt" not in content
+    assert "timeout" not in content
+    assert "120" not in content
+
+
+def test_python_tool_call_display_summarizes_execution_with_safe_input_values() -> None:
+    label, content = tool_call_display(
+        "execute_python_code",
+        {
+            "allow_network": True,
+            "code": "print(inputs['github_token'])",
+            "inputs": {
+                "owner": "react",
+                "repo": "react",
+                "week_start_local": "2026-08-24T00:00:00+01:00",
+            },
+            "timeout": 60,
+        },
+    )
+
+    assert label == "Python"
+    assert content == (
+        "run analysis · network enabled · inputs: owner=react, repo=react, "
+        "week_start_local=2026-08-24T00:00:00+01:00"
+    )
+    assert "print" not in content
+    assert "timeout" not in content
+    assert "60" not in content
+
+
+def test_python_tool_call_display_derives_high_level_details_from_source() -> None:
+    label, content = tool_call_display(
+        "execute_python_code",
+        {
+            "allow_network": True,
+            "code": """
+owner = inputs["owner"]
+url = f"https://api.github.com/repos/{owner}/react/stargazers?per_page=100"
+print({"stars_gained": 3, "pages_scanned": 2})
+""",
+            "timeout": 60,
+        },
+    )
+
+    assert label == "Python"
+    assert "target: api.github.com/repos/{owner}/react/stargazers" in content
+    assert "inputs: owner" in content
+    assert "outputs: stars_gained, pages_scanned" in content
+    assert "network enabled" in content
+    assert "per_page" not in content
+    assert "print" not in content
+    assert "timeout" not in content
+
+
+def test_generic_tool_call_display_is_bounded_and_omits_execution_controls() -> None:
+    label, content = tool_call_display(
+        "custom_registry_tool",
+        {
+            "query": "x" * 400,
+            "limit": 25,
+            "timeout": 120,
+            "api_token": "secret-token",
+        },
+    )
+
+    assert label == "custom registry tool"
+    assert len(content) <= 180
+    assert content.endswith("…")
+    assert not content.startswith("{")
+    assert "limit: 25" in content
+    assert "query:" in content
+    assert "timeout" not in content
+    assert "api_token" not in content
+    assert "secret-token" not in content
 
 
 def test_intermediate_message_strips_terminal_controls_before_markdown() -> None:
