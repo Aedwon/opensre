@@ -21,3 +21,16 @@ def test_system_prompt_runs_explicit_commands_without_repository_probe() -> None
     assert "Do not search for AGENTS.md files or inspect the repository first" in (
         _SYSTEM_PROMPT_BASE
     )
+
+
+def test_ask_user_choice_is_for_blocking_decisions_not_automated_follow_ups() -> None:
+    """Optional next-step menus follow TURN INTERACTION facts, not surface guessing."""
+    text = _SYSTEM_PROMPT_BASE
+    collapsed = " ".join(text.split())
+    assert "before work can continue" in collapsed
+    assert "Do **not** call `ask_user_choice` just to park an optional follow-up" in collapsed
+    assert "when TURN INTERACTION says the menu is unavailable" in collapsed
+    assert "session_goal` is attached" in collapsed
+    assert "Always leave the user a selectable next step" not in text
+    assert "TURN INTERACTION says the ask_user_choice menu is available" in collapsed
+    assert "headless, scheduled, or gateway" not in collapsed
