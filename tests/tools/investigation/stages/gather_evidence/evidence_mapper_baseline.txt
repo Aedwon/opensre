@@ -174,7 +174,6 @@ summarize_community_followups
 summarize_github_pr_status
 telegram_send_message
 twilio_notify
-victoria_logs_query
 work_task_add
 work_task_complete
 work_task_list
