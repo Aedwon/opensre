@@ -8,6 +8,7 @@ from collections.abc import Callable
 from prompt_toolkit import PromptSession
 from prompt_toolkit.application import Application
 from prompt_toolkit.buffer import Buffer
+from prompt_toolkit.filters import Condition
 from prompt_toolkit.formatted_text import ANSI
 from rich.console import Console
 
@@ -18,6 +19,10 @@ from surfaces.interactive_shell.runtime.core.state import (
 )
 from surfaces.interactive_shell.session import Session
 from surfaces.interactive_shell.ui import input_prompt
+from surfaces.interactive_shell.ui.hooks import (
+    install_confirmation_key_bindings,
+    install_plan_expand_key_bindings,
+)
 from surfaces.interactive_shell.ui.input_prompt import rendering as prompt_rendering
 from surfaces.interactive_shell.ui.input_prompt.key_bindings import (
     build_cancel_key_bindings,
@@ -54,9 +59,20 @@ class PromptBuilder:
         self._submitted: asyncio.Queue[str] = asyncio.Queue()
         self._prompt_task: asyncio.Task[str] | None = None
 
+    def _composer_hidden(self) -> bool:
+        """True while structured input (confirmation, menus) owns the keyboard.
+
+        The prompt reads this to collapse the free-text composer box so it does
+        not sit under the pending choice.
+        """
+        return typing_box_hidden(self.session, self.state)
+
     def setup(self) -> None:
         if self.pt_session is None:
-            self.pt_session = input_prompt.build_prompt_session(self.session)
+            self.pt_session = input_prompt.build_prompt_session(
+                self.session,
+                hide_composer=self._composer_hidden,
+            )
             self.session.terminal.prompt_history_backend = self.pt_session.history
 
         cancel_kb = build_cancel_key_bindings(self.state)
@@ -64,11 +80,27 @@ class PromptBuilder:
 
         self.pt_app = self.pt_session.app
         self.pt_session.default_buffer.accept_handler = self._accept_prompt_buffer
+        # While the Yes/No gate owns the keyboard the composer is hidden but its
+        # buffer still receives unbound keys unless it is read-only. Lock it so
+        # typeahead cannot accumulate under the overlay and submit after close.
+        self.pt_session.default_buffer.read_only = Condition(self.state.is_awaiting_confirmation)
         self.loop = asyncio.get_running_loop()
         self.session.terminal.prompt_app = self.pt_app
         self.session.terminal.main_loop = self.loop
         self.state.bind_loop(self.loop)
         self._invalidate_prompt = wire_prompt_refresh(self.session, self.pt_app, self.loop)
+        # Arrow-navigable Yes/No for the execution-confirmation gate: ↑/↓ move the
+        # selection, Enter (or a/b/y/n) delivers it. Installed after the redraw
+        # hook so a selection change repaints immediately.
+        confirm_kb = install_confirmation_key_bindings(self.state, self._invalidate_prompt)
+        install_session_key_bindings(self.pt_session, confirm_kb)
+        # Ctrl+P expands/collapses the pinned plan while one is on screen.
+        plan_kb = install_plan_expand_key_bindings(
+            self.state,
+            lambda: self.session.task_plan is not None and bool(self.session.task_plan.steps),
+            self._invalidate_prompt,
+        )
+        install_session_key_bindings(self.pt_session, plan_kb)
 
     @property
     def invalidate_prompt(self) -> Callable[[], None]:
@@ -97,6 +129,10 @@ class PromptBuilder:
 
     def _accept_prompt_buffer(self, buffer: Buffer) -> bool:
         """Queue accepted text while keeping the prompt application alive."""
+        # Enter during confirmation is handled by the Yes/No bindings; never
+        # treat residual buffer text as a submitted message while the gate is up.
+        if self.state.is_awaiting_confirmation():
+            return True
         self._submitted.put_nowait(buffer.text)
         return False
 

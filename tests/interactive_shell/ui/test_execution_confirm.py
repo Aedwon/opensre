@@ -140,7 +140,7 @@ def test_explicit_ask_tty_accepts_empty_confirmation() -> None:
         confirm_fn=_confirm,
         is_tty=True,
     )
-    assert captured == ["Yes, allow? [Y/n] "]
+    assert captured == ["Approve this action?"]
     assert "Command to approve" in buf.getvalue()
     assert "Why this needs approval:" in buf.getvalue()
 
@@ -304,3 +304,44 @@ def test_plan_only_guard_is_not_cleared_by_a_read_only_step() -> None:
         is_tty=True,
     )
     assert session.plan_only_until_authorized is True
+
+
+def test_always_allow_approves_and_raises_the_auto_level() -> None:
+    from config.constants.repl_autonomy import AutoLevel
+
+    session = Session()
+    session.terminal.auto_level = AutoLevel.LOW
+    buf = io.StringIO()
+    console = Console(file=buf, force_terminal=False)
+
+    # A reversible command approved with "always" runs now AND lifts Auto to Med
+    # so commands like it stop asking.
+    assert execution_allowed(
+        _ask_result(),
+        session=session,
+        console=console,
+        action_summary="echo hi > /tmp/s1.txt",
+        confirm_fn=lambda _: "always",
+        is_tty=True,
+    )
+    assert session.terminal.auto_level is AutoLevel.MED
+    assert "medium risk" in buf.getvalue()
+
+
+def test_plain_yes_does_not_change_the_auto_level() -> None:
+    from config.constants.repl_autonomy import AutoLevel
+
+    session = Session()
+    session.terminal.auto_level = AutoLevel.LOW
+    buf = io.StringIO()
+    console = Console(file=buf, force_terminal=False)
+
+    assert execution_allowed(
+        _ask_result(),
+        session=session,
+        console=console,
+        action_summary="echo hi > /tmp/s1.txt",
+        confirm_fn=lambda _: "y",
+        is_tty=True,
+    )
+    assert session.terminal.auto_level is AutoLevel.LOW
