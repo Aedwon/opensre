@@ -46,7 +46,6 @@ get_eks_nodegroup_health
 get_eks_pod_logs
 get_error_logs
 get_failed_tools
-get_github_star_history
 get_groundcover_query_reference
 get_hermes_filesystem_state
 get_hermes_kv_cache_state
@@ -122,11 +121,6 @@ list_eks_clusters
 list_eks_deployments
 list_eks_namespaces
 list_eks_pods
-list_github_actions_active_runs
-list_github_actions_run_jobs
-list_github_actions_workflow_runs
-list_github_commits
-list_github_security_alerts
 list_github_work_items
 list_jenkins_builds
 list_jenkins_jobs
