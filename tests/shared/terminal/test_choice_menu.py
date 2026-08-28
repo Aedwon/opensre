@@ -35,9 +35,61 @@ def test_draw_menu_uses_carriage_return_newlines(monkeypatch) -> None:
     plain = _ANSI_RE.sub("", rendered)
     assert "\n" in rendered
     assert all(rendered[index - 1] == "\r" for index, char in enumerate(rendered) if char == "\n")
-    assert "\rintegrations" in plain
-    assert "\r/integrations" in plain
-    assert "\r > 1. /integrations list" in plain
+    assert "\r  integrations" in plain
+    assert "\r  /integrations" in plain
+    assert "\r  ❯ 1. /integrations list" in plain
+    assert "\r    2. /integrations verify" in plain
+    # Airy layout: a blank row separates the question block from the options,
+    # and there is no full-width rule.
+    assert "\r  /integrations\r\n\r\n\r  ❯ 1." in plain
+    assert "─" not in plain
+
+
+def test_draw_menu_multi_select_checkboxes(monkeypatch) -> None:
+    out = io.StringIO()
+    monkeypatch.setattr(sys, "stdout", out)
+    monkeypatch.setattr(choice_menu, "_cols", lambda: 80)
+
+    choice_menu._draw_menu(
+        title="Extras",
+        crumb="",
+        labels=["Unit tests", "Dockerfile"],
+        index=0,
+        erase_lines=0,
+        multi_select=True,
+        checked={1},
+    )
+
+    plain = _ANSI_RE.sub("", out.getvalue())
+    assert "[ ] Unit tests" in plain
+    assert "[x] Dockerfile" in plain
+    assert "Submit" in plain
+
+
+def test_pick_multi_select_returns_values_not_labels(monkeypatch) -> None:
+    """Checked rows must emit choice values even when labels differ."""
+    out = io.StringIO()
+    actions = iter([" ", "down", " ", "down", "down", "enter"])
+    monkeypatch.setattr(sys, "stdout", out)
+    monkeypatch.setattr(choice_menu, "_cols", lambda: 80)
+    monkeypatch.setattr(
+        "surfaces.shared.terminal.components.key_reader.read_menu_or_char",
+        lambda **_kwargs: next(actions),
+    )
+    monkeypatch.setattr(
+        "surfaces.shared.terminal.components.key_reader.restore_stdin_terminal",
+        lambda: None,
+    )
+    monkeypatch.setattr(choice_menu, "repl_tty_interactive", lambda: True)
+
+    result = choice_menu._pick(
+        title="Extras",
+        crumb="",
+        labels=["Unit tests", "Dockerfile", "Or type…"],
+        multi_select=True,
+        values=["tests", "docker", "custom"],
+    )
+    assert result == "tests\ndocker"
 
 
 def test_draw_menu_strips_control_characters_from_title_and_labels(monkeypatch) -> None:
@@ -100,6 +152,23 @@ def test_reset_tty_column_writes_carriage_return(monkeypatch) -> None:
     assert out.getvalue() == "\r"
 
 
+def test_leave_inline_menu_starts_next_line_at_column_zero(monkeypatch) -> None:
+    """After a padded menu, Rich output must not inherit a mid-line cursor."""
+    out = io.StringIO()
+    monkeypatch.setattr(sys, "stdout", out)
+    monkeypatch.setattr(choice_menu, "repl_tty_interactive", lambda: True)
+    monkeypatch.setattr(
+        "surfaces.shared.terminal.components.key_reader.restore_stdin_terminal",
+        lambda: None,
+    )
+
+    choice_menu.leave_inline_menu()
+
+    # prepare_repl_output_line writes \\r\\n then reset_tty_column writes \\r
+    assert "\r\n" in out.getvalue()
+    assert out.getvalue().endswith("\r")
+
+
 def test_pick_ignores_unmapped_keys(monkeypatch) -> None:
     out = io.StringIO()
     actions = iter(["ignore", "enter"])
@@ -150,7 +219,7 @@ def test_repl_choose_one_starts_at_initial_value(monkeypatch) -> None:
 
     assert result == "blue"
     plain = _ANSI_RE.sub("", out.getvalue())
-    assert "> 2. blue (current)" in plain
+    assert "❯ 2. blue (current)" in plain
 
 
 def test_read_action_ignores_left_arrow(monkeypatch) -> None:

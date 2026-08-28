@@ -80,6 +80,21 @@ class AgentTurnResources:
     turn_handler: TurnRunner | None = None
 
 
+def _confirm_via_prompt(runtime: AgentTurnResources, prompt: str) -> str:
+    """Park for a y/n answer; hide the free-text box via ReplState confirmation phase.
+
+    ``begin_confirmation`` flips ``state.is_awaiting_confirmation()``, which
+    ``typing_box_hidden`` / ``render_prompt_region`` already honor. ``redraw``
+    invalidates the live prompt immediately so the box hides and restores
+    without waiting for the next refresh tick.
+    """
+    return request_confirmation_via_prompt(
+        runtime.state,
+        prompt,
+        redraw=runtime.invalidate_prompt,
+    )
+
+
 def _streaming_console(
     runtime: AgentTurnResources, cancel_event: threading.Event
 ) -> StreamingConsole:
@@ -145,7 +160,7 @@ async def run_agent_turn(runtime: AgentTurnResources, text: str) -> None:
                 text=text,
                 output=console,
                 recorder=recorder,
-                confirm=lambda prompt: request_confirmation_via_prompt(runtime.state, prompt),
+                confirm=lambda prompt: _confirm_via_prompt(runtime, prompt),
                 emit=emit,
                 dispatch_cancel=dispatch_cancel,
             )
