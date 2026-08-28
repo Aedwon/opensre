@@ -45,7 +45,6 @@ get_eks_node_health
 get_eks_nodegroup_health
 get_eks_pod_logs
 get_error_logs
-get_failed_jobs
 get_failed_tools
 get_github_star_history
 get_groundcover_query_reference
