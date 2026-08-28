@@ -41,7 +41,11 @@ from surfaces.interactive_shell.runtime.core.confirmation import (
     DispatchCancelled,
     request_confirmation_via_prompt,
 )
-from surfaces.interactive_shell.runtime.core.state import ReplState, SpinnerState
+from surfaces.interactive_shell.runtime.core.state import (
+    DEFAULT_CONFIRM_OPTIONS,
+    ReplState,
+    SpinnerState,
+)
 from surfaces.interactive_shell.runtime.input import PromptInputReader
 from surfaces.interactive_shell.runtime.input.actions import (
     InputAction,
@@ -94,6 +98,13 @@ def _confirm_via_prompt(runtime: AgentTurnResources, prompt: str) -> str:
     terminal = runtime.session.terminal
     options = terminal.pending_confirm_options
     terminal.pending_confirm_options = None
+    app = terminal.prompt_app
+    prompt_running = app is not None and getattr(app, "is_running", False)
+    if terminal.exclusive_stdin_active or not prompt_running:
+        # Exclusive-stdin / subprocess turns own the TTY (and ``is_running`` can
+        # still be true). Parking on the prompt app hangs while the cooked
+        # terminal echoes the arrow keys, so read a plain line instead.
+        return _confirm_via_readline(prompt, options)
     return request_confirmation_via_prompt(
         runtime.state,
         prompt,
@@ -101,6 +112,30 @@ def _confirm_via_prompt(runtime: AgentTurnResources, prompt: str) -> str:
         redraw=runtime.invalidate_prompt,
         prepare_ui=lambda: _reset_prompt_buffer(runtime.session),
     )
+
+
+def _confirm_via_readline(prompt: str, options: tuple[tuple[str, str], ...] | None) -> str:
+    """Cooked-stdin confirmation for when the arrow-nav prompt app is unavailable.
+
+    Prints the rows and reads one line; a row tag, digit, or answer key resolves
+    to that row's answer, which the execution gate interprets. An empty line
+    matches the arrow-nav default: the last row (cancel).
+    """
+    rows = options or DEFAULT_CONFIRM_OPTIONS
+    for index, (_answer, label) in enumerate(rows):
+        print(f"  [{chr(ord('a') + index)}] {label}")
+    tags = "/".join(chr(ord("a") + index) for index in range(len(rows)))
+    cancel = rows[-1][0]
+    try:
+        raw = input(f"{prompt} [{tags}] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        return cancel
+    if not raw:
+        return cancel
+    for index, (answer, _label) in enumerate(rows):
+        if raw in {chr(ord("a") + index), str(index + 1), answer}:
+            return answer
+    return raw
 
 
 def _reset_prompt_buffer(session: Session) -> None:
