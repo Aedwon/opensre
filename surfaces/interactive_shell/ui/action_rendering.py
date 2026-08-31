@@ -468,6 +468,8 @@ class ActionRenderObserver:
             return
         self.console.print()
         # ``render_markdown_block`` sanitizes model text at ``_build_markdown_block``.
+        # No ``∴`` header here: the turn's single marker sits on the final
+        # response, so a mid-turn narration must not add a second one.
         render_markdown_block(self.console, content)
 
     def _render_skill_start(self, data: dict[str, Any]) -> None:
