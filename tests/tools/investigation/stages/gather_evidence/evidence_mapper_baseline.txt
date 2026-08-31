@@ -14,7 +14,6 @@ GetRecentLogs
 GetResources
 GetServiceDependencies
 buzz_send_message
-call_openclaw_tool
 call_posthog_tool
 call_sentry_tool
 call_x_tool
@@ -62,7 +61,6 @@ get_mongodb_atlas_cluster_events
 get_mongodb_atlas_cluster_metrics
 get_mongodb_atlas_clusters
 get_mongodb_atlas_performance_advisor
-get_openclaw_conversation
 get_pods_on_node
 get_postgresql_current_queries
 get_postgresql_lock_status
@@ -115,7 +113,6 @@ list_github_work_items
 list_jenkins_builds
 list_jenkins_jobs
 list_jenkins_running_builds
-list_openclaw_tools
 list_posthog_tools
 list_s3_objects
 list_sentry_tools
@@ -141,7 +138,6 @@ rocketchat_send_message
 scan_redis_keys
 search_github_code
 search_github_issues
-search_openclaw_conversations
 send_openclaw_message
 slack_add_reaction
 slack_join_channel
