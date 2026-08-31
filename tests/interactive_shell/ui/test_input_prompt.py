@@ -120,15 +120,26 @@ class TestPromptTurnCounter:
     def test_user_prompt_row_is_recessed_grey_without_accent_bar(self) -> None:
         """Droid-style: the user row is recessed SECONDARY grey with no bright ``▌``
         accent bar, so the agent reply (``∴``) and notes carry the visual weight."""
+        from infrastructure.terminal.theme import get_active_theme
+
         session = Session()
         buf = io.StringIO()
-        console = Console(file=buf, force_terminal=True, color_system="truecolor", highlight=False)
+        console = Console(
+            file=buf,
+            force_terminal=True,
+            color_system="truecolor",
+            highlight=False,
+            legacy_windows=False,
+            no_color=False,
+        )
         render_submitted_prompt(console, session, "why does it show that?")
         raw = buf.getvalue()
         assert "▌" not in raw  # no bright accent bar
         visible = re.sub(r"\x1b\[[0-9;]*m", "", raw)
         assert "[1] ❯ why does it show that?" in visible  # turn number + text kept
-        assert "166;166;166" in raw  # body in SECONDARY (#A6A6A6) recessed grey
+        secondary = get_active_theme().SECONDARY.lstrip("#")
+        r, g, b = (int(secondary[i : i + 2], 16) for i in (0, 2, 4))
+        assert f"{r};{g};{b}" in raw  # body in SECONDARY recessed grey
 
     def test_autosubmitted_goal_condition_gets_work_turn_marker(self) -> None:
         """``/goal set`` autosubmit must not look like part of the slash turn."""

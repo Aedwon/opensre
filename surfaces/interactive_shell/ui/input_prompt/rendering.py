@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from prompt_toolkit.formatted_text import ANSI
 from rich.console import Console
+from rich.style import Style
 from rich.text import Text
 
 from core.agent_harness.spi.handoff import parse_ask_user_answers
 from infrastructure.terminal import theme as ui_theme
 from surfaces.interactive_shell.runtime import Session
 from surfaces.interactive_shell.ui.handoff_questions import (
-    handoff_answer_style,
     last_assistant_asked_handoff,
     render_ask_user_qa,
     render_handoff_answer_marker,
@@ -107,14 +107,11 @@ def render_submitted_prompt(console: Console, session: Session, text: str) -> No
         )
     counter = _counter_text(session.terminal.claim_turn_number())
     lines = text.splitlines() or [""]
-    # Rich's Style.parse() reads the bare str value of a _LazyRichStyle (""),
-    # so resolve to a concrete string at the call site to keep palette colors.
-    # The user row is recessed grey (no bright accent): the agent's ``∴`` reply
-    # and working notes carry the visual weight, and SECONDARY keeps the ask
-    # readable while sitting a shade above the darker DIM notes so the three
-    # turn roles still read apart. The ``[N] ❯`` prefix is dimmer still.
-    body_style = handoff_answer_style() if is_handoff_answer else str(ui_theme.SECONDARY)
-    prefix_style = str(ui_theme.DIM)
+    # Concrete Style objects from palette hexes: a _LazyRichStyle's empty
+    # underlying str makes Rich emit default white instead of SECONDARY grey.
+    theme = ui_theme.get_active_theme()
+    body_style = Style(color=theme.BRAND if is_handoff_answer else theme.SECONDARY)
+    prefix_style = Style(color=theme.DIM)
     continuation_prefix = " " * (len(counter) + len("❯ "))
     rendered = Text()
     for index, line in enumerate(lines):
