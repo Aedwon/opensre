@@ -133,7 +133,6 @@ query_grafana_annotations
 query_yc_metrics
 read_yc_logs
 redeploy_railway_service
-replay_slack_thread_locally
 rocketchat_send_message
 scan_redis_keys
 search_github_code
@@ -141,11 +140,7 @@ search_github_issues
 send_openclaw_message
 slack_add_reaction
 slack_join_channel
-slack_list_team_members
-slack_read_list
-slack_read_messages
 slack_reply_message
-slack_search_messages
 slack_send_message
 summarize_community_followups
 summarize_github_pr_status
