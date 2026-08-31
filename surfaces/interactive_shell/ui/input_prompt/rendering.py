@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from prompt_toolkit.formatted_text import ANSI
 from rich.console import Console
-from rich.style import Style
 from rich.text import Text
 
 from core.agent_harness.spi.handoff import parse_ask_user_answers
@@ -107,23 +106,23 @@ def render_submitted_prompt(console: Console, session: Session, text: str) -> No
         )
     counter = _counter_text(session.terminal.claim_turn_number())
     lines = text.splitlines() or [""]
-    # Concrete Style objects from palette hexes: a _LazyRichStyle's empty
-    # underlying str makes Rich emit default white instead of SECONDARY grey.
-    theme = ui_theme.get_active_theme()
-    body_style = Style(color=theme.BRAND if is_handoff_answer else theme.SECONDARY)
-    prefix_style = Style(color=theme.DIM)
+    # Write palette ANSI directly. Rich Text/Style.parse on a _LazyRichStyle
+    # (empty underlying str) emits default white instead of SECONDARY grey
+    # under CI coverage / shared Style.parse cache.
+    body_ansi = ui_theme.BRAND_ANSI if is_handoff_answer else ui_theme.SECONDARY_ANSI
+    prefix_ansi = ui_theme.DIM_ANSI
     continuation_prefix = " " * (len(counter) + len("❯ "))
-    rendered = Text()
+    parts: list[str] = []
     for index, line in enumerate(lines):
         if index:
-            rendered.append("\n")
+            parts.append("\n")
         if index == 0:
-            rendered.append(counter, style=prefix_style)
-            rendered.append("❯ ", style=prefix_style)
+            parts.append(f"{prefix_ansi}{counter}❯ {ui_theme.ANSI_RESET}")
         else:
-            rendered.append(continuation_prefix, style=prefix_style)
-        rendered.append(line, style=body_style)
-    console.print(rendered)
+            parts.append(f"{prefix_ansi}{continuation_prefix}{ui_theme.ANSI_RESET}")
+        parts.append(f"{body_ansi}{line}{ui_theme.ANSI_RESET}")
+    console.file.write("".join(parts) + "\n")
+    console.file.flush()
 
 
 def resolve_prompt_prefix_ansi(*, inline_spinner: str, idle_hint: str) -> str:

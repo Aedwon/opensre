@@ -81,7 +81,13 @@ jobs:
             month="$(date -u +%-m)"
             day="$(date -u +%-d)"
             short_sha="${GITHUB_SHA:0:7}"
-            main_version="0.1.${year}.${month}.${day}+main.${short_sha}"
+            raw_version="0.1.${year}.${month}.${day}+main.${short_sha}"
+            # Hatchling/importlib report the PEP 440 canonical form: an all-digit
+            # SHA segment like 0273802 becomes 273802. Match that here so the
+            # binary smoke test and release notes agree with --version.
+            main_version="$(
+              python3 -c 'from infrastructure.deployment.packaging.sync_release_version import canonical_release_version; import sys; print(canonical_release_version(sys.argv[1]))' "$raw_version"
+            )"
 
             echo "channel=main" >> "$GITHUB_OUTPUT"
             echo "tag_name=main-build" >> "$GITHUB_OUTPUT"
