@@ -15,6 +15,9 @@ from integrations.github.helpers import (
     github_creds,
     github_source_available,
 )
+from integrations.github.tools.community_followup_tool.mapper import (
+    _map_summarize_community_followups,
+)
 from integrations.github.tools.workflow import summarize_community_followups_from_comments
 
 
@@ -46,6 +49,7 @@ def _community_extract_params(sources: dict[str, dict]) -> dict[str, Any]:
     anti_examples=["Posting replies", "Changing GitHub labels or assignees"],
     surfaces=(ToolSurface.INVESTIGATION, ToolSurface.CHAT),
     side_effect_level=SideEffectLevel.READ_ONLY,
+    evidence_mapper=_map_summarize_community_followups,
     input_schema={
         "type": "object",
         "properties": {
