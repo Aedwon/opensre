@@ -239,15 +239,16 @@ def print_command_output(console: Console, output: str, *, style: str | None = N
     if not output:
         return
     text = _collapse_traceback(output.rstrip()) or output.rstrip()
+    lines = text.split("\n")
     # Frame every result under its `$ command` header with a ``↳`` gutter so the
     # output reads as the command's child (parent → child) and stays grouped and
     # set off from the reply prose above — wide output included. A single wide
     # line wraps within the block instead of flushing the whole block (and its
-    # narrow siblings) to the left margin.
-    lines = text.split("\n")
-    text = "\n".join(
-        [f"  ↳ {lines[0]}", *(f"{_COMMAND_OUTPUT_INDENT}{line}" for line in lines[1:])]
-    )
+    # narrow siblings) to the left margin. Do not fold the body: this is the
+    # sole dump for captured slash, foreground CLI, and Claude Code output —
+    # there is no later reply summary or expansion path for the hidden rows.
+    framed = [f"  ↳ {lines[0]}", *(f"{_COMMAND_OUTPUT_INDENT}{line}" for line in lines[1:])]
+    text = "\n".join(framed)
     # Parse any ANSI the captured child emitted so its Rich styling (bold, colour)
     # survives being re-printed here instead of showing as raw escape codes.
     rendered = Text.from_ansi(text) if style is None else Text.from_ansi(text, style=style)

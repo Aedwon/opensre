@@ -57,6 +57,16 @@ def test_a_python_traceback_is_collapsed_to_the_exception_and_last_frame() -> No
     assert "run()" not in out  # intermediate source lines are gone
 
 
+def test_long_output_keeps_every_line() -> None:
+    """Slash / CLI / Claude Code dumps have no later summary — do not fold them."""
+    out = _out("\n".join(f"line {i}" for i in range(30)), width=100)
+    assert "↳ line 0" in out
+    assert "line 9" in out
+    assert "line 10" in out
+    assert "line 29" in out
+    assert "more line" not in out
+
+
 def test_non_traceback_output_is_left_intact() -> None:
     out = _out("Traceback: a log line that merely mentions the word", width=100)
     assert "a log line that merely mentions the word" in out  # not folded
