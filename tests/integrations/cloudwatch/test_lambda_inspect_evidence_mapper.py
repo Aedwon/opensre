@@ -28,7 +28,10 @@ def test_mapper_records_compact_safe_lambda_metadata() -> None:
         "layers": [{"arn": "secret-ish-layer-detail"}],
         "code": {
             "file_count": 2,
-            "files": {"app.py": "print('sensitive source')", "config.py": "TOKEN='secret'"},
+            "files": {
+                "app.py": "print('sensitive source')",
+                "config.py": "TOKEN='secret'",
+            },
         },
     }
 
@@ -39,7 +42,10 @@ def test_mapper_records_compact_safe_lambda_metadata() -> None:
         {
             "source": "inspect_lambda_function",
             "label": "Lambda Function",
-            "summary": "orders-worker: runtime python3.13, state Active, 512 MB, 30s timeout, 2 code files",
+            "summary": (
+                "orders-worker: runtime python3.13, state Active, 512 MB, "
+                "30s timeout, 2 code files"
+            ),
             "url": None,
             "snippet": None,
         }
@@ -112,7 +118,11 @@ def test_repeated_merge_calls_keep_independent_citeable_entries() -> None:
     merge_tool_evidence(
         evidence,
         "inspect_lambda_function",
-        {"found": True, "function_name": "orders-worker", "runtime": "python3.13"},
+        {
+            "found": True,
+            "function_name": "orders-worker",
+            "runtime": "python3.13",
+        },
         {"function_name": "orders-worker"},
     )
     second_output = {
