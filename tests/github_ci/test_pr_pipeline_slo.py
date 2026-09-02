@@ -107,6 +107,7 @@ def test_quality_jobs_start_in_parallel_and_gate_aggregates_them() -> None:
     assert "needs" not in jobs["quality-static"]
     assert "needs" not in jobs["quality-typecheck"]
     assert "needs" not in jobs["test"]
+    assert "needs" not in jobs["session-store-locked"]
     assert "Restore mypy cache" in {step.get("name") for step in jobs["quality-typecheck"]["steps"]}
     assert "Verify typed tool contracts" in {
         step.get("name") for step in jobs["quality-typecheck"]["steps"]
@@ -132,6 +133,7 @@ def test_quality_jobs_start_in_parallel_and_gate_aggregates_them() -> None:
         "quality-typecheck",
         "test",
         "coverage-report",
+        "session-store-locked",
     }
 
 
@@ -141,3 +143,31 @@ def test_source_filter_defaults_to_running_ci_for_new_file_types() -> None:
 
     assert inputs["predicate-quantifier"] == "every"
     assert filters == ["**", "!**/*.md", "!**/*.mdx", "!docs/**"]
+
+
+def test_session_store_locked_job_contracts() -> None:
+    workflow = _workflow("ci.yml")
+    jobs = workflow["jobs"]
+    locked_job = jobs["session-store-locked"]
+
+    assert (
+        locked_job["outputs"]["session_persistence"]
+        == "${{ steps.changes.outputs.session_persistence }}"
+    )
+    change_step = next(step for step in locked_job["steps"] if step.get("id") == "changes")
+    filters = yaml.safe_load(change_step["with"]["filters"])
+    assert filters["session_persistence"] == ["core/agent_harness/session/persistence/**"]
+    # Without every, the bare "**" in `source` always matches and the
+    # negations (!*.md etc.) never take effect — see detect-source/action.yml.
+    assert change_step["with"]["predicate-quantifier"] == "every"
+
+    gate_run = next(
+        step["run"]
+        for step in jobs["ci-gate"]["steps"]
+        if step.get("name") == "Require green upstream jobs"
+    )
+    assert (
+        "session_persistence_changed='${{ needs.session-store-locked.outputs.session_persistence }}'"
+        in gate_run
+    )
+    assert 'if [ "$session_persistence_changed" = "true" ]; then' in gate_run

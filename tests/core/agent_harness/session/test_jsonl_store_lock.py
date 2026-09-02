@@ -40,8 +40,11 @@ def _session(session_id: str) -> Any:
     )
 
 
-def test_writes_take_no_lock_by_default(storage_home: Path) -> None:
+def test_writes_take_no_lock_by_default(
+    storage_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # Arrange: default (flag unset) — single-task behavior, no lock file.
+    monkeypatch.delenv(OPENSRE_SESSION_FILE_LOCK_ENV, raising=False)
     session = _session("sess-nolock")
     store = JsonlSessionStore()
 
@@ -103,6 +106,7 @@ def test_lock_disabled_records_no_lock_metrics(
     storage_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The default (lock-off) path never touches the operations log for the lock."""
+    monkeypatch.delenv(OPENSRE_SESSION_FILE_LOCK_ENV, raising=False)
     log_path = storage_home / "operations.jsonl"
     monkeypatch.setenv(OPENSRE_OPERATIONS_LOG_PATH_ENV, str(log_path))
     session = _session("sess-nolock-metrics")

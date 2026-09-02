@@ -845,9 +845,67 @@ jobs:
         run: uv run ${{ matrix.command }}
         timeout-minutes: 30
 
+  session-store-locked:
+    name: session-store-locked
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      session_persistence: ${{ steps.changes.outputs.session_persistence }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Detect changes
+        id: changes
+        uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        with:
+          # predicate-quantifier: every is required so the "!*.md"-style
+          # negations actually exclude docs-only paths — with the default
+          # "some" quantifier the bare "**" pattern alone always matches,
+          # so `source` is always true. See detect-source/action.yml.
+          predicate-quantifier: every
+          filters: |
+            source:
+              - "**"
+              - "!**/*.md"
+              - "!**/*.mdx"
+              - "!docs/**"
+            session_persistence:
+              - "core/agent_harness/session/persistence/**"
+
+      - name: Install uv
+        if: steps.changes.outputs.source == 'true' || github.event_name == 'push'
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: "latest-known"  # avoid live ndjson "latest" fetch flakes
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Set up Python
+        if: steps.changes.outputs.source == 'true' || github.event_name == 'push'
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        if: steps.changes.outputs.source == 'true' || github.event_name == 'push'
+        run: uv sync --frozen --extra dev
+
+      - name: Run session-store tests with file lock enabled
+        if: steps.changes.outputs.source == 'true' || github.event_name == 'push'
+        env:
+          OPENSRE_SESSION_FILE_LOCK: "1"
+        run: >
+          uv run python -m pytest
+          tests/core/agent_harness/session/
+          -v
+          --timeout=120
+
   ci-gate:
     name: CI Gate
-    needs: [quality-static, quality-typecheck, test, coverage-report]
+    needs: [quality-static, quality-typecheck, test, coverage-report, session-store-locked]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -862,7 +920,9 @@ jobs:
           typecheck='${{ needs.quality-typecheck.result }}'
           test_result='${{ needs.test.result }}'
           coverage='${{ needs.coverage-report.result }}'
-          echo "static=$static typecheck=$typecheck test=$test_result coverage-report=$coverage"
+          session_locked='${{ needs.session-store-locked.result }}'
+          session_persistence_changed='${{ needs.session-store-locked.outputs.session_persistence }}'
+          echo "static=$static typecheck=$typecheck test=$test_result coverage-report=$coverage session-store-locked=$session_locked session_persistence=$session_persistence_changed"
 
           # Source jobs always start. On docs-only PRs their setup and test
           # steps skip after the per-job classifier, leaving a successful job.
@@ -878,4 +938,19 @@ jobs:
           case "$coverage" in
             success|skipped) ;;
             *) echo "::error::coverage-report is $coverage"; exit 1 ;;
+          esac
+
+          # session-store-locked is required for session/persistence/ changes,
+          # and non-blocking elsewhere.
+          case "$session_locked" in
+            success) ;;
+            skipped) echo "session-store-locked skipped" ;;
+            *)
+              if [ "$session_persistence_changed" = "true" ]; then
+                echo "::error::session-store-locked is $session_locked (required for session/persistence/ changes)"
+                exit 1
+              else
+                echo "session-store-locked is $session_locked (non-blocking for changes outside session/persistence/)"
+              fi
+              ;;
           esac
