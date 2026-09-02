@@ -36,7 +36,11 @@ def map_inspect_lambda_function(
     code = output.get("code")
     if isinstance(code, dict):
         file_count = code.get("file_count")
-        if isinstance(file_count, int) and not isinstance(file_count, bool) and file_count >= 0:
+        if (
+            isinstance(file_count, int)
+            and not isinstance(file_count, bool)
+            and file_count >= 0
+        ):
             file_label = "code file" if file_count == 1 else "code files"
             parts.append(f"{file_count} {file_label}")
 
