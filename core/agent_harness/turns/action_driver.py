@@ -65,6 +65,12 @@ from core.tool_framework.tags import SUMMARIZE_OBSERVATION_TAG
 from infrastructure.analytics.react_turn import run_react_agent_with_telemetry
 from infrastructure.observability.trace.prompts import persist_turn_system_prompt
 from infrastructure.observability.trace.spans import component_span
+from infrastructure.terminal.peek import (
+    DISPLAY_OUTPUT_MAX_CHARS,
+    DISPLAY_OUTPUT_MAX_LINES,
+    cap_output_for_display,
+    format_view_all_marker,
+)
 
 log = logging.getLogger(__name__)
 
@@ -341,9 +347,9 @@ def _generic_tool_results(result: Any) -> list[tuple[ToolCall, Any]]:
     ]
 
 
-_DISPLAY_OUTPUT_MAX_LINES = 12
-_DISPLAY_OUTPUT_MAX_CHARS = 800
-_OUTPUT_TRUNCATED_MARKER = "… (output truncated)"
+_DISPLAY_OUTPUT_MAX_LINES = DISPLAY_OUTPUT_MAX_LINES
+_DISPLAY_OUTPUT_MAX_CHARS = DISPLAY_OUTPUT_MAX_CHARS
+_EXPAND_MARKER_RE = re.compile(r"^… \d+ more, Ctrl\+O to view$")
 
 
 _PLAN_SNAPSHOT_RE = re.compile(r"Plan\s*[·.]\s*\d+\s*/\s*\d+(?:\s*[✓●○][^✓●○\n]*)*")
@@ -372,33 +378,77 @@ def _looks_like_json(text: str) -> bool:
     return True
 
 
+def _is_output_truncation_marker(line: str) -> bool:
+    return line == format_view_all_marker() or bool(_EXPAND_MARKER_RE.fullmatch(line))
+
+
+def _split_output_truncation_markers(text: str) -> tuple[str, str]:
+    """Peel the trailing expand marker from a capped preview.
+
+    Returns ``(body, marker)``. *marker* is the single Droid-style line
+    (``… N more, Ctrl+O to view`` or ``Ctrl+O to view all``), or empty.
+    """
+    lines = text.split("\n")
+    cut = len(lines)
+    while cut and _is_output_truncation_marker(lines[cut - 1]):
+        cut -= 1
+    return "\n".join(lines[:cut]), "\n".join(lines[cut:])
+
+
 def _cap_for_display(text: str) -> str:
     """Cap verbose tool output for the console so a large result cannot flood the
     transcript. The model and persisted history keep the full text; only the
-    user-facing preview is truncated."""
-    if not text:
-        return text
-    lines = text.splitlines()
-    capped = "\n".join(lines[:_DISPLAY_OUTPUT_MAX_LINES])
-    truncated = len(lines) > _DISPLAY_OUTPUT_MAX_LINES
-    if len(capped) > _DISPLAY_OUTPUT_MAX_CHARS:
-        capped = capped[:_DISPLAY_OUTPUT_MAX_CHARS].rstrip()
-        truncated = True
-    return f"{capped}\n{_OUTPUT_TRUNCATED_MARKER}" if truncated else capped
+    user-facing preview is truncated to a short head (Droid-style).
+    """
+    preview, _full = cap_output_for_display(text)
+    return preview
+
+
+def _stash_collapsed_tool_output(session: SessionState, text: str | None) -> None:
+    """Remember the full body so Ctrl+O can page it; no-op without a terminal."""
+    terminal = getattr(session, "terminal", None)
+    if terminal is None:
+        return
+    terminal.collapsed_tool_output = text
+
+
+def _is_data_blob(text: str) -> bool:
+    """Whether *text* is a JSON/record blob — valid, truncated, or a mid-object
+    fragment (a capped ``gh api`` response can arrive starting mid-value).
+
+    Detected by shape (opens an object/array) or by density of ``":`` key
+    separators, which URLs do not inflate and prose/logs almost never contain.
+    Such data is what the reply summarizes; it should not fill the transcript.
+    """
+    stripped = text.strip()
+    if not stripped:
+        return False
+    if stripped[0] in "{[":
+        return True
+    # Mid-object fragments (and short gh ``summary`` previews of JSON) still
+    # carry ``":`` key separators — two is enough once the text is clearly a
+    # record slice rather than prose.
+    return stripped.count('":') >= 2
+
+
+def _user_facing_tool_text(text: str) -> str:
+    """Return *text* for the transcript, or ``""`` when it is a data blob."""
+    stripped = text.strip()
+    if not stripped or _is_data_blob(stripped):
+        return ""
+    return stripped
 
 
 def _visible_stdout(stdout: str) -> str:
-    """Plain-text stdout is shown as-is; a JSON payload (e.g. a ``gh api``
-    response) is pretty-printed so it reads as formatted data, not a one-line
-    blob. Capping and fenced-block styling happen later, at display time."""
-    stripped = stdout.strip()
-    if not stripped:
-        return ""
-    try:
-        parsed = json.loads(stripped)
-    except (TypeError, ValueError, json.JSONDecodeError):
-        return stripped
-    return json.dumps(parsed, indent=2, ensure_ascii=False)
+    """Plain-text stdout is shown as-is; a JSON payload is hidden.
+
+    A ``gh api`` / structured response is data the reply already summarizes, so
+    dumping it into the transcript only adds a wall that reads as unattached to
+    the command. Hide the blob and let the summary carry the answer — the way
+    Claude Code / Droid keep tool results out of the reply prose. Plain-text
+    output (logs, a short listing) is still shown, capped later at display time.
+    """
+    return _user_facing_tool_text(stdout)
 
 
 def _format_generic_tool_payload(tool_call: ToolCall, tool_result: Any) -> str:
@@ -407,12 +457,14 @@ def _format_generic_tool_payload(tool_call: ToolCall, tool_result: Any) -> str:
         return ""
     preferred_response = _preferred_tool_response_text(tool_result)
     if preferred_response:
-        return preferred_response
+        return _user_facing_tool_text(preferred_response)
     details = getattr(tool_result, "details", None)
     if isinstance(details, dict):
         summary = details.get("summary")
         if isinstance(summary, str) and summary.strip():
-            return summary.strip()
+            # gh ``summary`` for ``api`` used to be a sliced JSON string — hide
+            # that the same way as raw stdout so the transcript stays prose.
+            return _user_facing_tool_text(summary)
         stdout = details.get("stdout")
         if details.get("ok") and isinstance(stdout, str) and stdout.strip():
             return _visible_stdout(stdout)
@@ -432,19 +484,23 @@ def _format_generic_tool_payload(tool_call: ToolCall, tool_result: Any) -> str:
     if isinstance(parsed, dict):
         response_text = parsed.get("response_text")
         if isinstance(response_text, str) and response_text.strip():
-            return response_text.strip()
+            return _user_facing_tool_text(response_text)
         summary = parsed.get("summary")
         if isinstance(summary, str) and summary.strip():
-            return summary.strip()
+            return _user_facing_tool_text(summary)
         if parsed.get("ok") and isinstance(parsed.get("stdout"), str) and parsed["stdout"].strip():
             return _visible_stdout(str(parsed["stdout"]))
         if parsed.get("error"):
             return str(parsed["error"]).strip()
-    if parsed is not None:
-        # An opaque JSON payload (a dict with no user-facing field, or a list):
-        # pretty-print it so raw data reads as formatted JSON rather than a
-        # one-line blob. Capping and fenced-block styling happen at display time.
-        return json.dumps(parsed, indent=2, ensure_ascii=False)
+    if isinstance(parsed, (dict, list)):
+        # An opaque JSON payload (no user-facing field — e.g. a raw ``gh api``
+        # response) is for the model, not the transcript: the reply summarizes
+        # it. Hide it rather than dump a wall of data unattached to the command.
+        return ""
+    # A truncated / fragmentary JSON blob (a capped ``gh api`` response) that
+    # failed to parse — hide it, same as valid JSON.
+    if _is_data_blob(content):
+        return ""
     # Non-JSON content is the tool's real text output; show it under the name.
     return f"{tool_call.name} result: {content}"
 
@@ -454,7 +510,7 @@ def _preferred_tool_response_text(tool_result: Any) -> str:
     if isinstance(details, dict):
         response_text = details.get("response_text")
         if isinstance(response_text, str) and response_text.strip():
-            return response_text.strip()
+            return _user_facing_tool_text(response_text)
     content = _content_to_text(getattr(tool_result, "content", "")).strip()
     if not content:
         return ""
@@ -465,7 +521,9 @@ def _preferred_tool_response_text(tool_result: Any) -> str:
     if not isinstance(parsed, dict):
         return ""
     response_text = parsed.get("response_text")
-    return response_text.strip() if isinstance(response_text, str) else ""
+    if not isinstance(response_text, str):
+        return ""
+    return _user_facing_tool_text(response_text)
 
 
 def _has_preferred_tool_response_text(result: Any) -> bool:
@@ -960,16 +1018,24 @@ def _compose_response(
     # github_cli / other registry tools without double-printing shell output.
     # response_text still includes history for persistence / non-TTY surfaces.
     display_generic = _cap_for_display(generic_text)
+    # Defense: never fence a data blob into the transcript (summary/stdout leaks
+    # used to pretty-print truncated JSON behind a text fence).
+    if _is_data_blob(generic_text):
+        display_generic = ""
     is_json = _looks_like_json(generic_text)
-    truncated = display_generic.endswith(_OUTPUT_TRUNCATED_MARKER)
+    body, markers = _split_output_truncation_markers(display_generic)
+    truncated = bool(markers)
+    _stash_collapsed_tool_output(session, generic_text if truncated else None)
     bulky = display_generic.count("\n") >= 4 or truncated
     if display_generic and (is_json or bulky):
         # Truncated JSON is invalid — fencing it as ``json`` makes Rich/Pygments
         # paint error tokens (red blocks) on the cut. Use a text fence instead
-        # and keep the truncation marker outside the block.
+        # and keep truncation markers outside the block.
         if truncated:
-            body = display_generic[: -len(_OUTPUT_TRUNCATED_MARKER)].rstrip("\n")
-            display_generic = f"\n```text\n{body}\n```\n{_OUTPUT_TRUNCATED_MARKER}"
+            if body:
+                display_generic = f"\n```text\n{body}\n```\n{markers}"
+            else:
+                display_generic = f"\n```text\n{display_generic}\n```"
         else:
             lang = "json" if is_json else "text"
             display_generic = f"\n```{lang}\n{display_generic}\n```"
