@@ -43,8 +43,7 @@ def test_mapper_records_compact_safe_lambda_metadata() -> None:
             "source": "inspect_lambda_function",
             "label": "Lambda Function",
             "summary": (
-                "orders-worker: runtime python3.13, state Active, 512 MB, "
-                "30s timeout, 2 code files"
+                "orders-worker: runtime python3.13, state Active, 512 MB, 30s timeout, 2 code files"
             ),
             "url": None,
             "snippet": None,
