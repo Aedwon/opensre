@@ -76,7 +76,6 @@ helm_get_release_values
 helm_list_releases
 helm_release_history
 helm_release_status
-inspect_lambda_function
 inspect_s3_object
 jira_add_comment
 jira_create_issue
