@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import re
 
 import pytest
 from prompt_toolkit.application import create_app_session
@@ -22,11 +23,26 @@ from surfaces.interactive_shell.ui.input_prompt.key_bindings import (
 from surfaces.interactive_shell.ui.input_prompt.stdout import patch_prompt_stdout
 from surfaces.interactive_shell.ui.terminal_ui import render_prompt_region
 
+# prompt_toolkit skips rewriting a space when the previous cell was already a
+# space (``ESC[C`` / ``ESC[nC``). After Ready fills the status row, the Ctrl+C
+# hint lands on those columns as cursor-forward — correct on a real TTY, but
+# absent as literal `` `` in the VT100 capture.
+_CURSOR_FORWARD_RE = re.compile(r"\x1b\[(\d*)C")
+
+
+def _visible_prompt_text(raw: str) -> str:
+    """Expand cursor-forward skips so markers match what the user sees."""
+
+    def _expand(match: re.Match[str]) -> str:
+        return " " * int(match.group(1) or "1")
+
+    return _CURSOR_FORWARD_RE.sub(_expand, raw)
+
 
 async def _wait_for_output(buffer: io.StringIO, marker: str, *, count: int = 1) -> str:
     for _ in range(200):
         rendered = buffer.getvalue()
-        if rendered.count(marker) >= count:
+        if _visible_prompt_text(rendered).count(marker) >= count:
             return rendered
         await asyncio.sleep(0.01)
     pytest.fail(f"prompt output never rendered {marker!r} {count} time(s)")
@@ -56,14 +72,14 @@ async def test_background_output_is_inserted_above_the_redrawn_composer(
                     refresh_interval=0,
                 )
             )
-            await _wait_for_output(terminal, "TERMINAL ")
+            await _wait_for_output(terminal, "Auto (")
 
             print("assistant response")
-            rendered = await _wait_for_output(terminal, "TERMINAL ", count=2)
+            rendered = await _wait_for_output(terminal, "Auto (", count=2)
 
-            assert rendered.rfind("assistant response") < rendered.rfind("TERMINAL ")
+            assert rendered.rfind("assistant response") < rendered.rfind("Auto (")
             assert rendered.rfind("\x1b[?2026h") < rendered.rfind("assistant response")
-            assert rendered.rfind("\x1b[?2026l") > rendered.rfind("TERMINAL ")
+            assert rendered.rfind("\x1b[?2026l") > rendered.rfind("Auto (")
             pipe_input.send_bytes(b"\x04")
             with pytest.raises(EOFError):
                 await asyncio.wait_for(prompt_task, timeout=2)
@@ -106,7 +122,7 @@ async def test_ctrl_c_updates_the_live_prompt_before_second_press_exits(
                     refresh_interval=0,
                 )
             )
-            await _wait_for_output(terminal, "TERMINAL ")
+            await _wait_for_output(terminal, "Auto (")
 
             pipe_input.send_bytes(b"\x03")
             await _wait_for_output(terminal, "(Press Ctrl+C again to exit)")

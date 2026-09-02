@@ -111,29 +111,38 @@ def test_confirmation_region_height_is_stable_across_selection_changes() -> None
     assert yes_rows == no_rows
 
 
-def test_streaming_prompt_height_stable_when_action_row_fills_and_clears() -> None:
-    """Tool start/end must not resize the composer region mid-turn.
+def test_streaming_prompt_height_matches_idle_with_live_tool_on_status_row() -> None:
+    """Prompt stack is Plan → status → Auto (Droid); no reserved action gap.
 
-    The shimmer action row is reserved for the whole streaming turn so filling
-    or clearing it cannot push the bordered input box up and down.
+    Live tool awareness folds into the spinner row
+    (``Invoking tools… · GitHub CLI · …``). Height must match idle whether or
+    not a tool is in flight — never a second reserved prompt row.
     """
     session = Session()
+    idle = SpinnerState()
+    idle_rows = render_prompt_region(session, ReplState(), idle).value.count("\n")
+
     spinner = SpinnerState()
     spinner.start()
     spinner.set_phase(SpinnerState.THINKING_PHASE)
+    thinking_rows = render_prompt_region(session, ReplState(), spinner).value.count("\n")
+    assert thinking_rows == idle_rows
 
-    empty_rows = render_prompt_region(session, ReplState(), spinner).value.count("\n")
-
+    spinner.set_phase(SpinnerState.INVOKING_TOOLS_PHASE)
     spinner.set_active_action("GitHub CLI · gh api repos/x", action_id="t1")
-    filled_rows = render_prompt_region(session, ReplState(), spinner).value.count("\n")
-    assert filled_rows == empty_rows
+    filled = render_prompt_region(session, ReplState(), spinner).value
+    assert filled.count("\n") == idle_rows
+    plain = _plain(filled)
+    assert "GitHub CLI" in plain
+    assert "Invoking tools" in plain
+    assert plain.count("\n") == idle_rows or filled.count("\n") == idle_rows
 
-    spinner.clear_active_action("t1")
-    cleared_rows = render_prompt_region(session, ReplState(), spinner).value.count("\n")
-    assert cleared_rows == empty_rows
 
-    rendered = _plain(render_prompt_region(session, ReplState(), spinner).value)
-    assert "Thinking" in rendered or "…" in rendered
+def test_idle_status_row_shows_ready_hint() -> None:
+    session = Session()
+    rendered = _plain(render_prompt_region(session, ReplState(), SpinnerState()).value)
+    assert "Ready" in rendered
+    assert "/ for commands" in rendered
 
 
 def test_confirmation_region_shows_stacked_yes_no_choice() -> None:

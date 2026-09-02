@@ -26,6 +26,7 @@ from core.agent_harness.spi.task_plan import is_plan_diagnosis_prose
 from infrastructure.observability.trace.redaction import redact_sensitive
 from infrastructure.safety.terminal_output import strip_terminal_controls
 from infrastructure.terminal.theme import BOLD_SKILL, BRAND, DIM, HIGHLIGHT, SECONDARY
+from infrastructure.text import is_data_blob
 from surfaces.interactive_shell.runtime import Session
 from surfaces.interactive_shell.runtime.core.state import SpinnerState
 from surfaces.interactive_shell.ui.streaming import render_note_block
@@ -45,8 +46,6 @@ _TOOL_CALL_MARKER = "⏺"
 # stripped string value of that single argument. Anything that needs to combine
 # multiple arguments (``slash_invoke``, ``synthetic_run``) keeps a custom branch
 # in :func:`tool_call_display`.
-# The spinner's thinking verb re-rolls once per this many agent-loop steps.
-_VERB_ROTATION_STEP_INTERVAL = 2
 _TOOL_PREVIEW_MAX_CHARS = 180
 _TOOL_VALUE_MAX_CHARS = 64
 _GH_VERBOSE_VALUE_FLAGS = frozenset({"--jq", "--template", "-t"})
@@ -87,16 +86,16 @@ _SELF_RENDERING_TOOLS: frozenset[str] = frozenset(
         ActionToolName.ASK_USER_CHOICE,
         ActionToolName.INVESTIGATION_START,
         # shell_run / cli_exec stream their own ``$ <command>`` + output during
-        # execution, and the running action shows as the live shimmer line — so a
-        # static ``Execute``/``opensre`` header here would print the command a
-        # third time. Suppress it; the shimmer and the ``$`` line are enough.
+        # execution, and the running tool is folded into the status spinner row —
+        # so a static ``Execute``/``opensre`` header here would print the command
+        # a third time. Suppress it; the status row and the ``$`` line are enough.
         ActionToolName.SHELL_RUN,
         ActionToolName.CLI_EXEC,
     }
 )
 
 #: Tools that stream their own ``$ <command>`` line during execution. The live
-#: shimmer names the action only (``⟩ Execute``) rather than repeating the
+#: status row names the action only (``Execute``) rather than repeating the
 #: command, so the command is not shown twice while it runs.
 _COMMAND_STREAMING_TOOLS: frozenset[str] = frozenset(
     {
@@ -127,32 +126,18 @@ def _bounded_preview(value: str, *, limit: int = _TOOL_PREVIEW_MAX_CHARS) -> str
     return collapsed[: limit - 1].rstrip() + "…"
 
 
-def _is_result_data_blob(text: str) -> bool:
-    """True when *text* is a JSON/record blob the reply will summarize.
-
-    Same shape test the action driver uses to hide ``gh api`` payloads: opens
-    an object/array, or is dense with ``":`` key separators.
-    """
-    stripped = text.strip()
-    if not stripped:
-        return False
-    if stripped[0] in "{[":
-        return True
-    return stripped.count('":') >= 2
-
-
 def _preview_from_result_fields(payload: dict[str, Any]) -> str:
     """Pull the one user-facing field from a tool-result dict, or empty."""
     for key in ("response_text", "summary"):
         value = payload.get(key)
-        if isinstance(value, str) and value.strip() and not _is_result_data_blob(value):
+        if isinstance(value, str) and value.strip() and not is_data_blob(value):
             return value.strip()
     stdout = payload.get("stdout")
     if (
         payload.get("ok")
         and isinstance(stdout, str)
         and stdout.strip()
-        and not _is_result_data_blob(stdout)
+        and not is_data_blob(stdout)
     ):
         return stdout.strip()
     error = payload.get("error")
@@ -172,9 +157,9 @@ def _tool_result_preview(output: object) -> str:
             return preview
     if isinstance(output, str):
         stripped = output.strip()
-        return "" if not stripped or _is_result_data_blob(stripped) else stripped
+        return "" if not stripped or is_data_blob(stripped) else stripped
     content = getattr(output, "content", None)
-    if isinstance(content, str) and content.strip() and not _is_result_data_blob(content):
+    if isinstance(content, str) and content.strip() and not is_data_blob(content):
         return content.strip()
     return ""
 
@@ -396,7 +381,6 @@ class ActionRenderObserver:
     def __call__(self, kind: str, data: dict[str, Any]) -> None:
         if kind == "llm_start":
             self._set_spinner_phase(SpinnerState.THINKING_PHASE)
-            self._advance_spinner_verb(data)
             return
         if kind == "message_update":
             self._render_intermediate_message(data)
@@ -466,12 +450,12 @@ class ActionRenderObserver:
             spinner.set_phase(label)
 
     def _set_active_action(self, name: str, data: dict[str, Any]) -> None:
-        """Show the running tool as a shimmering action line in the live region.
+        """Fold the running tool into the spinner status row (same line).
 
         Stacked by tool-call id: the ReAct loop emits every ``tool_start``
         before executing the batch, so a single slot would show the last
         tool and clear on the first ``tool_end``. Scrollback keeps the
-        settled solid copy. Only relabels an already-running spinner
+        settled ``⏺`` copy. Only relabels an already-running spinner
         (see ``_set_spinner_phase``).
         """
         spinner = get_investigation_spinner()
@@ -493,21 +477,6 @@ class ActionRenderObserver:
     def _has_active_action(self) -> bool:
         spinner = get_investigation_spinner()
         return bool(spinner is not None and spinner.active_action)
-
-    def _advance_spinner_verb(self, data: dict[str, Any]) -> None:
-        """Rotate the prompt spinner's thinking verb every two agent steps.
-
-        ``llm_start`` fires once per think→act iteration of the agent loop.
-        The verb picked at ``SpinnerState.start()`` covers the first two
-        iterations; each pair after that re-rolls it, so the label changes
-        during a long turn without flickering on every step.
-        """
-        iteration = int(data.get("iteration", 0) or 0)
-        if iteration < _VERB_ROTATION_STEP_INTERVAL or iteration % _VERB_ROTATION_STEP_INTERVAL:
-            return
-        spinner = get_investigation_spinner()
-        if spinner is not None:
-            spinner.advance_verb()
 
     def _render_intermediate_message(self, data: dict[str, Any]) -> None:
         """Render the model's commentary preceding this iteration's tool calls.
@@ -575,7 +544,7 @@ class ActionRenderObserver:
             self.console,
             preview,
             style=str(SECONDARY),
-            on_collapse=lambda body: setattr(self.session.terminal, "collapsed_tool_output", body),
+            on_collapse=lambda body: self.session.terminal.stash_collapsed_tool_output(body),
         )
         self.session.terminal.inline_tool_results = True
 

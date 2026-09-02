@@ -95,10 +95,10 @@ def render_prompt_region(session: Session, state: ReplState, spinner: SpinnerSta
     plan_prefix = f"{plan_overlay}\n\n" if plan_overlay else ""
 
     # A pending confirmation renders a stacked, arrow-navigable Yes/No choice
-    # (box hidden) with blank rows above and below so it reads as its own block.
+    # (box hidden). Density matches the streaming stack: status → Auto → composer.
     if state.is_awaiting_confirmation():
         choice = _confirmation_block(state)
-        return ANSI(f"\n{plan_prefix}{choice}\n\n{auto_line}\n{base}")
+        return ANSI(f"\n{plan_prefix}{choice}\n{auto_line}\n{base}")
 
     if state.is_ctrl_c_exit_hint_visible():
         prefix = prompt_rendering.ctrl_c_exit_hint_ansi()
@@ -109,18 +109,11 @@ def render_prompt_region(session: Session, state: ReplState, spinner: SpinnerSta
                 idle_hint=prompt_rendering.resolve_idle_hint_ansi(session),
             )
         )
-    # The running action shimmers on its own row between the status line and the
-    # autonomy line; scrollback keeps the settled solid copy. Reserve that row
-    # for the whole streaming turn — appearing/clearing mid-turn used to grow
-    # and shrink the prompt region, which made the composer box jump.
-    if spinner.streaming:
-        action = strip_cpr_sequences(spinner.active_action_ansi())
-        action_line = f"{action}\n"
-    else:
-        action_line = ""
-    # A blank row separates the plan block from the status line so the checklist
-    # reads as its own element, not flush against the prompt.
-    return ANSI(f"\n{plan_prefix}{prefix}\n{action_line}{auto_line}\n{base}")
+    # Tools already paint a ``⏺`` line into scrollback; the live tool name is
+    # folded into the spinner status row (same line as ``Invoking tools…``).
+    # Do not reserve a second action row here — that blank slot made the stack
+    # look sparse and filled mid-turn as the old composer-height jump.
+    return ANSI(f"\n{plan_prefix}{prefix}\n{auto_line}\n{base}")
 
 
 _CONFIRM_HINT = "↑↓ Navigate • Enter confirm • Esc cancel"
@@ -129,8 +122,8 @@ _CONFIRM_HINT = "↑↓ Navigate • Enter confirm • Esc cancel"
 def _confirmation_block(state: ReplState) -> str:
     """Header, the stacked ``[a] Yes`` / ``[b] No`` choice, and a nav hint.
 
-    Blank rows separate the header, the options, and the hint so the pending
-    decision reads as a clear, self-contained block above the status line.
+    Dense like the streaming stack: header, choice, and hint on consecutive
+    lines so confirm doesn't feel taller than Thinking/Invoking.
     """
     header = clip_prompt_text(state.confirm_prompt_text.strip(), prompt_line_width())
     header_ansi = f"{ui_theme.SECONDARY_ANSI}{header}{ui_theme.ANSI_RESET}"
@@ -138,7 +131,7 @@ def _confirmation_block(state: ReplState) -> str:
         confirmation_choice_overlay_ansi(state.confirm_selected, state.confirm_options)
     )
     hint = f"{ui_theme.DIM_ANSI}{_CONFIRM_HINT}{ui_theme.ANSI_RESET}"
-    return f"{header_ansi}\n\n{choice}\n\n{hint}"
+    return f"{header_ansi}\n{choice}\n{hint}"
 
 
 __all__ = ["render_prompt_region", "render_terminal_ui"]
