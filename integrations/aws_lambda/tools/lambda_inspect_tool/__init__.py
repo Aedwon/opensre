@@ -5,6 +5,9 @@ from __future__ import annotations
 from core.tool_framework import tool
 from integrations.aws.lambda_client import get_function_code, get_function_configuration
 from integrations.aws_lambda.availability import lambda_available, lambda_name
+from integrations.aws_lambda.tools.lambda_inspect_tool._evidence import (
+    map_inspect_lambda_function,
+)
 
 
 def _extract_inspect_lambda_params(sources: dict[str, dict]) -> dict:
@@ -33,6 +36,7 @@ def _extract_inspect_lambda_params(sources: dict[str, dict]) -> dict:
     },
     is_available=lambda_available,
     extract_params=_extract_inspect_lambda_params,
+    evidence_mapper=map_inspect_lambda_function,
 )
 def inspect_lambda_function(function_name: str, include_code: bool = True) -> dict:
     """Inspect a Lambda function's configuration and optionally its code."""
